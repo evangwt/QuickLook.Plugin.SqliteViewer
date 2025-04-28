@@ -1,0 +1,117 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+}
+h3 {
+    color: red;
+}
+
+/* 树节点基础样式 */
+.tree-node {
+    cursor: pointer;
+    font-size: 16px; /* 增加字体大小 */
+    font-weight: bold; /* 加粗字体 */
+    color: #2c3e50; /* 更深的颜色 */
+    margin: 5px 0; /* 增加上下间距 */
+    padding: 10px 10px;
+    background-color: #ecf0f1; /* 浅灰色背景 */
+    border-radius: 4px; /* 圆角边框 */
+}
+
+/* 子内容容器的样式 */
+.tree-node-content {
+    margin-left: 20px; /* 子节点的缩进比父节点多 */
+    padding: 5px;
+    background-color: #f9f9f9; /* 更浅的灰色背景 */
+    border-left: 2px solid #bdc3c7; /* 左侧实线 */
+}
+
+/* 折叠状态符号 */
+.tree-node-collapsed::before {
+    content: "▸ "; /* 使用三角形符号表示折叠 */
+    color: #2980b9; /* 蓝色符号 */
+    font-size: 14px; /* 符号大小 */
+}
+
+/* 表格容器样式 */
+.table-container {
+    max-width: 100%; /* 限制容器的最大宽度 */
+    overflow: auto; /* 当内容超出时显示滚动条 */
+    border: 1px solid #ddd; /* 添加边框以区分不同表格 */
+    margin-bottom: 10px; /* 表格之间的间距 */
+    background-color: #fff; /* 背景颜色 */
+}
+
+/* 表格样式 */
+table {
+    width: 100%; /* 表格宽度占满容器 */
+    border-collapse: collapse; /* 合并表格边框 */
+}
+
+th, td {
+    padding: 8px; /* 单元格内边距 */
+    border: 1px solid #ddd; /* 单元格边框 */
+    text-align: left; /* 文本对齐方式 */
+    max-width: 200px; /* 限制单元格宽度 */
+    white-space: nowrap; /* 防止单元格内容换行 */
+    overflow: hidden; /* 隐藏超出部分 */
+    text-overflow: ellipsis; /* 超出部分显示省略号 */
+}
+
+th {
+    background-color: #f4f4f4;
+}
+
+.sql-query {
+    margin-top: 20px;
+}
+
+.sql-query input {
+    width: 70%;
+    padding: 8px;
+    margin-right: 10px;
+}
+
+.sql-query button {
+    padding: 8px 15px;
+}
+
+.loading {
+    display: none;
+    font-style: italic;
+    color: gray;
+}
+
+/* 分页控件样式 */
+.pagination {
+    display: flex;
+    align-items: center; /* 垂直居中对齐 */
+    padding: 8px;
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    margin-top: 10px;
+}
+
+.pagination button {
+    padding: 5px 10px;
+    margin-right: 4px; /* 增加按钮之间的间距 */
+    background-color: #007bff;
+    color: white;
+    border: none;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.pagination button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
+.pagination button.active {
+    background-color: #28a745; /* 当前页按钮的颜色 */
+}
+
+.pagination span {
+    margin-right: 10px; /* 增加与按钮之间的间距 */
+    color: #666;
+}
