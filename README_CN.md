@@ -4,6 +4,9 @@
 
 这个插件允许 [QuickLook](https://github.com/QL-Win/QuickLook) 预览 SQLite 文件格式，而无需安装 SQLite 工具。
 
+> 有前端开发经验的开发者, 如感觉前端界面不好看, 请自行修改前端样式。
+> 本插件后续可能不再更新, 新功能将转移到[MultiViewer](https://github.com/QL-Win/QuickLook.Plugin.MultiViewer)进行开发, 该插件将支持更多格式的预览。且前端统一使用html, 后续提供相关接口。
+
 ## 使用
 
 1. 前往 [发布页面](https://github.com/QL-Win/QuickLook.Plugin.SqliteViewer/releases)，下载最新版本。
