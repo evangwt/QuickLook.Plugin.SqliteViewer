@@ -2,6 +2,8 @@
 
 ![QuickLook icon](https://user-images.githubusercontent.com/1687847/29485863-8cd61b7c-84e2-11e7-97d5-eacc2ba10d28.png)
 
+![example](img/example.png)
+
 > Frontend developers with experience are welcome to modify the frontend styles if they feel the current interface is not visually appealing.
 > Please note that this plugin may no longer be updated in the future. New features will be developed in [MultiViewer](https://github.com/heicycyu/QuickLook.Plugin.MultiViewer), which will support previewing more formats. The frontend of MultiViewer will uniformly use HTML, and relevant interfaces will be provided subsequently.
 

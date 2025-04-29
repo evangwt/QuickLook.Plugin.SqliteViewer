@@ -1,5 +1,7 @@
 ![QuickLook 图标](https://user-images.githubusercontent.com/1687847/29485863-8cd61b7c-84e2-11e7-97d5-eacc2ba10d28.png)
 
+![example](img/example.png)
+
 # QuickLook.Plugin.SqliteViewer
 
 这个插件允许 [QuickLook](https://github.com/QL-Win/QuickLook) 预览 SQLite 文件格式，而无需安装 SQLite 工具。

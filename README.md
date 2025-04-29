@@ -3,3 +3,4 @@
 
 [English Document](README_EN.md)
 
+![example](img/example.png)
