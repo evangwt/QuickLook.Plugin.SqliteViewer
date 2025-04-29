@@ -2,20 +2,35 @@ body {
     font-family: Arial, sans-serif;
     margin: 20px;
 }
-h3 {
-    color: red;
-}
 
 /* 树节点基础样式 */
 .tree-node {
     cursor: pointer;
     font-size: 16px; /* 增加字体大小 */
-    font-weight: bold; /* 加粗字体 */
     color: #2c3e50; /* 更深的颜色 */
     margin: 5px 0; /* 增加上下间距 */
     padding: 10px 10px;
     background-color: #ecf0f1; /* 浅灰色背景 */
     border-radius: 4px; /* 圆角边框 */
+}
+
+/* 折叠状态符号的样式 */
+.tree-node-title {
+    color: #2980b9; /* 蓝色符号 */
+    font-size: 20px; /* 符号大小 */
+}
+/* 折叠状态符号 */
+.tree-node-collapsed::before {
+    content: "▶ "; /* 使用三角形符号表示折叠 */
+}
+
+.tree-node-expanded::before {
+    content: "▼ ";
+}
+
+.tree-node-active {
+    font-weight: bold!important;
+    color: red!important;
 }
 
 /* 子内容容器的样式 */
@@ -26,11 +41,18 @@ h3 {
     border-left: 2px solid #bdc3c7; /* 左侧实线 */
 }
 
-/* 折叠状态符号 */
-.tree-node-collapsed::before {
-    content: "▸ "; /* 使用三角形符号表示折叠 */
-    color: #2980b9; /* 蓝色符号 */
-    font-size: 14px; /* 符号大小 */
+.sql-query {
+    margin-top: 20px;
+}
+
+.sql-query input {
+    width: 70%;
+    padding: 8px;
+    margin-right: 10px;
+}
+
+.sql-query button {
+    padding: 8px 15px;
 }
 
 /* 表格容器样式 */
@@ -40,6 +62,7 @@ h3 {
     border: 1px solid #ddd; /* 添加边框以区分不同表格 */
     margin-bottom: 10px; /* 表格之间的间距 */
     background-color: #fff; /* 背景颜色 */
+    margin-top: 10px;
 }
 
 /* 表格样式 */
@@ -60,20 +83,6 @@ th, td {
 
 th {
     background-color: #f4f4f4;
-}
-
-.sql-query {
-    margin-top: 20px;
-}
-
-.sql-query input {
-    width: 70%;
-    padding: 8px;
-    margin-right: 10px;
-}
-
-.sql-query button {
-    padding: 8px 15px;
 }
 
 .loading {

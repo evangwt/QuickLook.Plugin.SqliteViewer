@@ -13,6 +13,7 @@
 5. 选择你要预览的文件，并按下 <key>空格键</key>。
 
 ## 接口说明
+> 所有接口均使用`window.external.xxx`进行调用, 返回结果为json串, 请在前端使用`JSON.parse()`进行解析
 
 ### `window.external.GetTableNames`
 > 获取表名列表
@@ -23,17 +24,63 @@
 ### `window.external.LoadTableData`
 > 加载指定表的数据
 1. 调用方法: `window.external.LoadTableData(input, isTableName)`
-1. 参数:
-    - input: string, 表名或sql
-    - isTableName: bool, 表示输入的是否为表名, 请和input的数据对应
-2. 返回: `{status: boolean, data: {map[]}, message: string}`
+2. 参数:
+    - `input`: string, 表名或sql
+    - `isTableName`: bool, 表示输入的是否为表名, 请和input的数据对应
+3. 返回: `{status: boolean, data: {map[]}, message: string}`
+
+### `window.external.LoadTableDataBySql`
+> 通过sql查询加载数据
+1. 调用方法: `window.external.LoadTableDataBySql(sql)`
+2. 参数:
+    - `sql`: string, sql语句
+3. 返回: `{status: boolean, data: {map[]}, message: string}`
+
+### `window.external.GetTableRecordCount`
+> 获取表记录数
+1. 调用方法: `window.external.GetTableRecordCount(tableName)`
+2. 参数:
+    - `tableName`: string, 表名
+3. 返回: `{status: boolean, data: number, message: string}`
+
+### `window.external.GetTableColumns`
+> 获取表列名
+1. 调用方法: `window.external.GetTableColumns(tableName)`
+2. 参数:
+    - `tableName`: string, 表名
+3. 返回: `{status: boolean, data: string[], message: string}`
+
+
+## 配置说明
+> 配置文件路径: `$QuickLookAppDir\UserData\QuickLook.Plugin\QuickLook.Plugin.SqliteViewer\setting.json`
+
+|键|类型|说明|
+|-|-|-|
+|width|double|窗口默认宽度|
+|height|double|窗口默认高度|
+|log_level|int|日志级别, 0-5分别为 `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`, 默认为2|
 
 
 ## 更新历史
-### 0.1
+
+### v0.2
+1. 使用vue2对前端进行重构
+2. 增加setting功能
+3. 可配置窗口默认大小width, height
+4. 增加日志功能, 可在setting中配置日志级别, 0-5分别为 `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`
+5. 增加接口:
+    - `window.external.LoadTableDataBySql`
+    - `window.external.GetTableRecordCount`
+    - `window.external.GetTableColumns`
+
+### v0.1
 1. 添加了 SQLite 预览功能
 2. 使用`WebBrowser`渲染前端
-3. 前端通过`window.external.xxx`与后端进行通信, 增加接口: `window.external.GetTableNames`, `window.external.LoadTableData`, 详细使用方法见[接口说明](##接口说明)
+3. 前端通过`window.external.xxx`与后端进行通信, 增加接口:
+    - `window.external.GetTableNames`
+    - `window.external.LoadTableData`
+    > 详细使用方法见[接口说明](#接口说明)
+
 
 
 ## 许可证

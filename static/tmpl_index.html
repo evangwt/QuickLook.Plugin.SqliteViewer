@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQLite Viewer</title>
+    <link rel="stylesheet" href="[[PLUGIN_STATIC_DIR]]/styles.css">
+    <script src="[[PLUGIN_STATIC_DIR]]/vue2.js"></script>
+</head>
+
+<body>
+    <div id="app">
+        <div v-for="(node, index) in treeNodes" :key="index" class="tree-node">
+            <!-- 树节点 -->
+            <div class="tree-node-title" :class="{
+                    'tree-node-expanded': node.expanded,
+                    'tree-node-collapsed': !node.expanded,
+                    'tree-node-active': currentNodeName === node.name
+                }" @click="toggleNode(node, index)">
+                {{ index }} {{ node.label }}
+            </div>
+
+            <!-- 内容容器 -->
+            <div v-show="node.expanded" class="view-div">
+                <div v-if="node.isCustom">
+                    <div class="sql-query">
+                        <input type="text" placeholder="请输入 SQL 查询语句..." v-model="sqlInput" />
+                        <button @click="renderTableData(sqlInput, index)">执行查询</button>
+                    </div>
+                </div>
+                <div v-else class="pagination">
+                    <div v-if="node.data && node.total > 0" class="table-container">
+                        <!-- v-if="node.total >= node.pageSize" -->
+                        <button :disabled="node.currentPage === 1" @click="renderPage(node, index, node.currentPage - 1)">上一页</button>
+                        <!-- 中间页码按钮 -->
+                        <template v-for="page in visiblePages(node)" :key="page">
+                            <button :class="{ 'active': page === node.currentPage }" :disabled="page === '...'"
+                                @click="renderPage(node, index, page)">
+                                {{ page }}
+                            </button>
+                        </template>
+                        <button :disabled="node.currentPage * node.pageSize > node.total"
+                            @click="renderPage(node, index, node.currentPage + 1)">下一页</button>
+                        第 {{ node.currentPage }} 页 / 共 {{ Math.ceil(node.total / node.pageSize) }} 页 / 共 {{ node.total }} 条记录
+                        <select name="page-size" id="page-size" v-model="node.pageSize">
+                            <option v-for="pageSize in [10, 20, 50, 100]" :key="pageSize" :value="pageSize"
+                                @click="changePageSize(node, index, pageSize)">
+                                {{ pageSize }}
+                            </option>
+
+                        </select>
+                    </div>
+                </div>
+
+                <div v-if="node.data && node.data.length > 0" class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>row</th>
+                                <th v-for="(column, columnIndex) in node.columns" :key="columnIndex">{{ column }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(row, rowIndex) in node.data" :key="rowIndex">
+                                <td>{{ node.pageSize * (node.currentPage - 1) + rowIndex + 1}}</td>
+                                <td v-for="(column, columnIndex) in node.columns" :key="columnIndex">
+                                    <span :title="row[column]">{{ row[column] }}</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p v-else>暂无数据</p>
+            </div>
+        </div>
+    </div>
+
+    <script
+        src="[[PLUGIN_STATIC_DIR]]/scripts.js"></script>
+</body>
+
+</html>

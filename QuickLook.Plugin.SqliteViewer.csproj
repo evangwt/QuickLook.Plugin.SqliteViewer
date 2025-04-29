@@ -36,19 +36,16 @@
     </ItemGroup>
 
     <ItemGroup>
-      <None Remove="script.js" />
-      <None Remove="scripts.js" />
-      <None Remove="styles.css" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <Content Include="tmpl_index.html">
+      <Content Include="static\tmpl_index.html">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <Content Include="scripts.js">
+      <Content Include="static\styles.css">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <Content Include="styles.css">
+      <Content Include="static\scripts.js">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+      <Content Include="static\vue2.js">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
     </ItemGroup>
@@ -72,6 +69,12 @@
 
     <ItemGroup>
       <None Update="script.js">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+      <None Update="static\scripts.js">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+      <None Update="static\vue2.js">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>
     </ItemGroup>

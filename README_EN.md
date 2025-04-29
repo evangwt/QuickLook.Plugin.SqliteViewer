@@ -14,7 +14,8 @@ This plugin allows [QuickLook](https://github.com/QL-Win/QuickLook) to preview s
 4. Restart QuickLook.
 5. Select the file and press <key>Spacebar</key>.
 
-## Interface Description
+## InterfaceDescription
+> All interfaces are invoked using `window.external.xxx`. The returned result is a JSON string. Please use `JSON.parse()` in the front-end to parse it.
 
 ### `window.external.GetTableNames`
 > Get the list of table names
@@ -26,16 +27,63 @@ This plugin allows [QuickLook](https://github.com/QL-Win/QuickLook) to preview s
 > Load data for a specified table
 1. Calling method: `window.external.LoadTableData(input, isTableName)`
 2. Parameters:
-    - input: string, table name or SQL query
-    - isTableName: bool, indicates whether the input is a table name; should correspond to the input data
+    - `input`: string, table name or SQL query
+    - `isTableName`: bool, indicates whether the input is a table name; should correspond to the input data
 3. Return value: `{status: boolean, data: {map[]}, message: string}`
+
+### `window.external.LoadTableDataBySql`
+> Load table data by SQL query
+1. Invocation: `window.external.LoadTableDataBySql(sql)`
+2. Parameters:
+   - `sql`: string, the SQL statement
+3. Returns: `{status: boolean, data: {map[]}, message: string}`
+
+### `window.external.GetTableRecordCount`
+> Get the number of records in a table
+1. Invocation: `window.external.GetTableRecordCount(tableName)`
+2. Parameters:
+   - `tableName`: string, the name of the table
+3. Returns: `{status: boolean, data: number, message: string}`
+
+### `window.external.GetTableColumns`
+> Get column names of a table
+1. Invocation: `window.external.GetTableColumns(tableName)`
+2. Parameters:
+   - `tableName`: string, the name of the table
+3. Returns: `{status: boolean, data: string[], message: string}`
+
+
+## Configuration Instructions
+> Configuration file path: `$QuickLookAppDir\UserData\QuickLook.Plugin\QuickLook.Plugin.SqliteViewer\setting.json`
+
+| Key       | Type   | Description |
+|-----------|--------|-------------|
+| width     | double | Default window width |
+| height    | double | Default window height |
+| log_level | int    | Log level, 0-5 correspond to `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL` respectively. Default is 2 |
 
 
 ## Update History
-### 0.1
+### v0.2
+1. The frontend has been refactored using Vue 2.
+2. Added settings functionality
+3. Configurable default window size (`width`, `height`)
+4. Added logging feature; log level can be configured in settings.
+   Levels 0-5 correspond to `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, and `FATAL` respectively
+5. Added interfaces:
+   - `window.external.LoadTableDataBySql`
+   - `window.external.GetTableRecordCount`
+   - `window.external.GetTableColumns`
+
+### v0.1
 1. Added SQLite preview functionality
 2. Used `WebBrowser` to render the front-end
-3. Front-end communicates with the back-end via `window.external.xxx`, added interfaces: `window.external.GetTableNames`, `window.external.LoadTableData`. For detailed usage, see [Interface Description](##Interface-Description)
+3. Front-end communicates with the back-end via `window.external.xxx`, added interfaces:
+   - `window.external.GetTableNames`
+   - `window.external.LoadTableData`
+   > For detailed usage, see [Interface Description](##InterfaceDescription)
+
+
 ## License
 
 ### Source codes in this project
