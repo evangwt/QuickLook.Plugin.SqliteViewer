@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -231,7 +232,7 @@ namespace QuickLook.Plugin.SqliteViewer
             _filePath = filePath;
         }
 
-        public string LoadTableDataBySql(string sql)
+        public Task<string> LoadTableDataBySql(string sql)
         {
             try
             {
@@ -247,7 +248,7 @@ namespace QuickLook.Plugin.SqliteViewer
                         { "data", data }
                     };
                     Logger.Instance.Debug($"通过sql加载表数据: {sql}, JSON 数据已生成");
-                    return JsonConvert.SerializeObject(result, Formatting.Indented);
+                    return Task.FromResult(JsonConvert.SerializeObject(result, Formatting.Indented));
                 }
             }
             catch (Exception ex)
@@ -258,7 +259,7 @@ namespace QuickLook.Plugin.SqliteViewer
                     { "data", null }
                 };
                 Logger.Instance.Error($"加载表数据失败: {ex.Message}");
-                return JsonConvert.SerializeObject(result, Formatting.Indented);
+                return Task.FromResult(JsonConvert.SerializeObject(result, Formatting.Indented));
             }
         }
 
@@ -302,7 +303,7 @@ namespace QuickLook.Plugin.SqliteViewer
             }
         }
 
-        public string GetTableNames()
+        public Task<string> GetTableNames()
         {
             using (var connection = new SQLiteConnection($"Data Source={_filePath};Mode=ReadOnly;"))
             {
@@ -318,11 +319,11 @@ namespace QuickLook.Plugin.SqliteViewer
                     }
                 }
                 //return tableNames.ToArray();
-                return JsonConvert.SerializeObject(tableNames, Formatting.Indented);
+                return Task.FromResult(JsonConvert.SerializeObject(tableNames, Formatting.Indented));
             }
         }
 
-        public int GetTableRecordCount(string tableName)
+        public Task<int> GetTableRecordCount(string tableName)
         {
             using (var connection = new SQLiteConnection($"Data Source={_filePath};Mode=ReadOnly;"))
             {
@@ -330,11 +331,11 @@ namespace QuickLook.Plugin.SqliteViewer
                 var query = connection.CreateCommand();
                 query.CommandText = $"SELECT count(*) FROM {tableName}";
                 var recordCount = (long)query.ExecuteScalar();
-                return (int)recordCount;
+                return Task.FromResult((int)recordCount);
             }
         }
 
-        public string GetTableColumns(string tableName)
+        public Task<string> GetTableColumns(string tableName)
         {
             using (var connection = new SQLiteConnection($"Data Source={_filePath};Mode=ReadOnly;"))
             {
@@ -350,7 +351,7 @@ namespace QuickLook.Plugin.SqliteViewer
                         columnNames.Add(columnName);
                     }
                 }
-                return JsonConvert.SerializeObject(columnNames, Formatting.Indented);
+                return Task.FromResult(JsonConvert.SerializeObject(columnNames, Formatting.Indented));
             }
         }
 

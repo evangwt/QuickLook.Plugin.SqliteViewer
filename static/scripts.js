@@ -8,9 +8,9 @@ try {
             treeNodes: [],
             sqlInput: 'select * from xxxxx limit 10',
         },
-        mounted: function () {
+        mounted: async function () {
             that = this;
-            var tableNames = JSON.parse(chrome.webview.hostObjects.external.GetTableNames());
+            var tableNames = JSON.parse(await chrome.webview.hostObjects.external.GetTableNames());
             try {
                 if (Object.prototype.toString.call(tableNames) === '[object Array]') {
                     var treeNodes = tableNames.map(function (tableName) {
@@ -61,10 +61,10 @@ try {
                     that.reloadTableData(treeNode, index);
                 }
             },
-            reloadTableData: function (treeNode, index) {
+            reloadTableData: async function (treeNode, index) {
                 that = this;
-                treeNode.total = chrome.webview.hostObjects.external.GetTableRecordCount(treeNode.name);
-                treeNode.columns = JSON.parse(chrome.webview.hostObjects.external.GetTableColumns(treeNode.name));
+                treeNode.total = await chrome.webview.hostObjects.external.GetTableRecordCount(treeNode.name);
+                treeNode.columns = JSON.parse(await chrome.webview.hostObjects.external.GetTableColumns(treeNode.name));
 
                 var sqlQuery = "SELECT * FROM " + treeNode.name + " LIMIT " + treeNode.pageSize;
                 that.renderTableData(sqlQuery, index);
@@ -82,10 +82,10 @@ try {
                 Vue.set(that.treeNodes[index], "data", data);
                 Vue.set(that.treeNodes[index], "columns", columns);
             },
-            getTableData: function (sqlQuery) {
+            getTableData: async function (sqlQuery) {
                 that.showLoading();
                 try {
-                    var res = JSON.parse(chrome.webview.hostObjects.external.LoadTableData(sqlQuery, false));
+                    var res = JSON.parse(await chrome.webview.hostObjects.external.LoadTableData(sqlQuery, false));
                     if (res.status && Array.isArray(res.data)) {
                         return res.data;
                     } else {
