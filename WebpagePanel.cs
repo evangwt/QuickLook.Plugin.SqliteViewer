@@ -50,6 +50,11 @@ namespace QuickLook.Plugin.SqliteViewer
                 };
                 Content = _webView;
             }
+
+            if (OSThemeHelper.AppsUseDarkTheme())
+            {
+                _webView.CreationProperties.AdditionalBrowserArguments = "--enable-features=WebContentsForceDark";
+            }
         }
 
         public void Navigate(Uri uri)
