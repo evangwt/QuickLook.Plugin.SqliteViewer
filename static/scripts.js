@@ -67,14 +67,14 @@ try {
                 treeNode.columns = JSON.parse(await chrome.webview.hostObjects.external.GetTableColumns(treeNode.name));
 
                 var sqlQuery = "SELECT * FROM " + treeNode.name + " LIMIT " + treeNode.pageSize;
-                that.renderTableData(sqlQuery, index);
+                await that.renderTableData(sqlQuery, index);
             },
-            renderTableData: function (sqlQuery, index) {
+            renderTableData: async function (sqlQuery, index) {
                 if (index < 0 || index >= this.treeNodes.length) {
                     alert('无效的索引:', index);
                     return;
                 }
-                var data = that.getTableData(sqlQuery);
+                var data = await that.getTableData(sqlQuery);
                 var columns = [];
                 if (data && data.length > 0) {
                     columns = Object.keys(data[0]);
@@ -104,18 +104,18 @@ try {
                 }
                 return treeNode.data.slice((treeNode.currentPage - 1) * treeNode.pageSize, treeNode.currentPage * treeNode.pageSize);
             },
-            renderPage: function (treeNode, index, page) {
+            renderPage: async function (treeNode, index, page) {
                 treeNode.currentPage = page;
                 var sqlQuery = "SELECT * FROM " + treeNode.name + " LIMIT " + treeNode.pageSize + " OFFSET " + (treeNode.currentPage - 1) * treeNode.pageSize;
-                that.renderTableData(sqlQuery, index);
+                await that.renderTableData(sqlQuery, index);
             },
-            changePageSize: function (treeNode, index, pageSize) {
+            changePageSize: async function (treeNode, index, pageSize) {
                 treeNode.currentPage = 1;
                 treeNode.pageSize = pageSize;
                 // this.set(this.treeNodes[index], "currentPage", 1);
                 // this.set(this.treeNodes[index], "pageSize", pageSize);
                 var sqlQuery = "SELECT * FROM " + treeNode.name + " LIMIT " + treeNode.pageSize + " OFFSET " + (treeNode.currentPage - 1) * treeNode.pageSize;
-                that.renderTableData(sqlQuery, index);
+                await that.renderTableData(sqlQuery, index);
             },
 
 
@@ -160,8 +160,6 @@ try {
 
                 return range;
             },
-
-
 
             showLoading: function () {
                 // document.getElementById('loading').style.display = 'block';
