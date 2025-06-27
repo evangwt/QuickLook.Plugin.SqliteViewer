@@ -1,15 +1,16 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using QuickLook.Common.Plugin;
+using System;
 using System.Collections.Generic;
 using System.Data.SQLite;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using QuickLook.Common.Plugin;
 
 namespace QuickLook.Plugin.SqliteViewer
 {
@@ -18,7 +19,7 @@ namespace QuickLook.Plugin.SqliteViewer
         public double width = 800;
         public double height = 600;
         public int logLevel = 2;
-        readonly JObject jsonObj;
+        private readonly JObject jsonObj;
 
         public Setting(string file)
         {
@@ -80,7 +81,6 @@ namespace QuickLook.Plugin.SqliteViewer
         {
             return (JArray)jsonObj[key];
         }
-
     }
 
     public class Plugin : IViewer
@@ -102,7 +102,6 @@ namespace QuickLook.Plugin.SqliteViewer
             varInit();
             if (!File.Exists(settingPath))
             {
-
                 Dictionary<string, object> settingMap = new Dictionary<string, object> {
                     { "width",  800},
                     { "height",  600},
@@ -136,7 +135,6 @@ namespace QuickLook.Plugin.SqliteViewer
             logger.Debug($" pluginStaticDir: {pluginStaticDir}");
             logger.Debug($"tmplHtmlFilePath: {tmplHtmlFilePath}");
             logger.Debug($"    htmlFilePath: {htmlFilePath}");
-
         }
 
         public void varInit()
@@ -200,10 +198,14 @@ namespace QuickLook.Plugin.SqliteViewer
             context.IsBusy = false;
         }
 
-        public WebBrowser GetViewerContent(string filePath)
+        public FrameworkElement GetViewerContent(string filePath)
         {
             // 创建 WebBrowser 控件
+#if false
             var webBrowser = new WebBrowser
+#else
+            var webBrowser = new WebpagePanel
+#endif
             {
                 Margin = new Thickness(10),
                 MinHeight = 300,
@@ -219,6 +221,7 @@ namespace QuickLook.Plugin.SqliteViewer
         }
     }
 
+    [ClassInterface(ClassInterfaceType.AutoDual)]
     [ComVisible(true)]
     public class ScriptHandler
     {
@@ -229,7 +232,7 @@ namespace QuickLook.Plugin.SqliteViewer
             _filePath = filePath;
         }
 
-        public string LoadTableDataBySql(string sql)
+        public Task<string> LoadTableDataBySql(string sql)
         {
             try
             {
@@ -245,7 +248,7 @@ namespace QuickLook.Plugin.SqliteViewer
                         { "data", data }
                     };
                     Logger.Instance.Debug($"通过sql加载表数据: {sql}, JSON 数据已生成");
-                    return JsonConvert.SerializeObject(result, Formatting.Indented);
+                    return Task.FromResult(JsonConvert.SerializeObject(result, Formatting.Indented));
                 }
             }
             catch (Exception ex)
@@ -256,11 +259,9 @@ namespace QuickLook.Plugin.SqliteViewer
                     { "data", null }
                 };
                 Logger.Instance.Error($"加载表数据失败: {ex.Message}");
-                return JsonConvert.SerializeObject(result, Formatting.Indented);
-
+                return Task.FromResult(JsonConvert.SerializeObject(result, Formatting.Indented));
             }
         }
-
 
         public string LoadTableData(string input, bool isTableName)
         {
@@ -299,11 +300,10 @@ namespace QuickLook.Plugin.SqliteViewer
                 };
                 Logger.Instance.Error($"加载表数据失败: {ex.Message}");
                 return JsonConvert.SerializeObject(result, Formatting.Indented);
-
             }
         }
 
-        public string GetTableNames()
+        public Task<string> GetTableNames()
         {
             using (var connection = new SQLiteConnection($"Data Source={_filePath};Mode=ReadOnly;"))
             {
@@ -319,11 +319,11 @@ namespace QuickLook.Plugin.SqliteViewer
                     }
                 }
                 //return tableNames.ToArray();
-                return JsonConvert.SerializeObject(tableNames, Formatting.Indented);
+                return Task.FromResult(JsonConvert.SerializeObject(tableNames, Formatting.Indented));
             }
         }
 
-        public int GetTableRecordCount(string tableName)
+        public Task<int> GetTableRecordCount(string tableName)
         {
             using (var connection = new SQLiteConnection($"Data Source={_filePath};Mode=ReadOnly;"))
             {
@@ -331,11 +331,11 @@ namespace QuickLook.Plugin.SqliteViewer
                 var query = connection.CreateCommand();
                 query.CommandText = $"SELECT count(*) FROM {tableName}";
                 var recordCount = (long)query.ExecuteScalar();
-                return (int)recordCount;
+                return Task.FromResult((int)recordCount);
             }
         }
 
-        public string GetTableColumns(string tableName)
+        public Task<string> GetTableColumns(string tableName)
         {
             using (var connection = new SQLiteConnection($"Data Source={_filePath};Mode=ReadOnly;"))
             {
@@ -351,7 +351,7 @@ namespace QuickLook.Plugin.SqliteViewer
                         columnNames.Add(columnName);
                     }
                 }
-                return JsonConvert.SerializeObject(columnNames, Formatting.Indented);
+                return Task.FromResult(JsonConvert.SerializeObject(columnNames, Formatting.Indented));
             }
         }
 
