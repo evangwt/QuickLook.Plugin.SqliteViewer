@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,73 +10,148 @@
 
 <body>
     <div id="app">
-        <div v-for="(node, index) in treeNodes" :key="index" class="tree-node">
-            <!-- 树节点 -->
-            <div class="tree-node-title" :class="{
-                    'tree-node-expanded': node.expanded,
-                    'tree-node-collapsed': !node.expanded,
-                    'tree-node-active': currentNodeName === node.name
-                }" @click="toggleNode(node, index)">
-                {{ index }} {{ node.label }}
+        <!-- Global Loading Overlay -->
+        <div v-show="isLoading" class="loading-overlay">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">{{ loadingMessage }}</div>
+        </div>
+
+        <!-- Header Section -->
+        <div class="header">
+            <h1 class="app-title">📊 SQLite Database Viewer</h1>
+            
+            <!-- Search Bar -->
+            <div class="search-container">
+                <input 
+                    type="text" 
+                    v-model="searchQuery" 
+                    placeholder="🔍 搜索表名..."
+                    class="search-input"
+                />
+                <button v-if="searchQuery" @click="clearSearch()" class="clear-search-btn">✕</button>
             </div>
+        </div>
 
-            <!-- 内容容器 -->
-            <div v-show="node.expanded" class="view-div">
-                <div v-if="node.isCustom">
-                    <div class="sql-query">
-                        <input type="text" placeholder="请输入 SQL 查询语句..." v-model="sqlInput" />
-                        <button @click="renderTableData(sqlInput, index)">执行查询</button>
-                    </div>
+        <!-- Main Content -->
+        <div class="main-content">
+            <div v-for="(node, index) in filteredTreeNodes" :key="index" class="tree-node">
+                <!-- 树节点 -->
+                <div class="tree-node-title" :class="{
+                        'tree-node-expanded': node.expanded,
+                        'tree-node-collapsed': !node.expanded,
+                        'tree-node-active': currentNodeName === node.name,
+                        'tree-node-loading': node.isLoading
+                    }" @click="toggleNode(node, index)">
+                    <span class="node-icon">{{ node.isCustom ? '⚡' : '📋' }}</span>
+                    <span class="node-label">{{ node.label }}</span>
+                    <span v-if="node.total > 0" class="node-count">({{ node.total.toLocaleString() }} 行)</span>
+                    <div v-if="node.isLoading" class="inline-spinner"></div>
                 </div>
-                <div v-else class="pagination">
-                    <div v-if="node.data && node.total > 0" class="table-container">
-                        <!-- v-if="node.total >= node.pageSize" -->
-                        <button :disabled="node.currentPage === 1" @click="renderPage(node, index, node.currentPage - 1)">上一页</button>
-                        <!-- 中间页码按钮 -->
-                        <template v-for="page in visiblePages(node)" :key="page">
-                            <button :class="{ 'active': page === node.currentPage }" :disabled="page === '...'"
-                                @click="renderPage(node, index, page)">
-                                {{ page }}
+
+                <!-- 内容容器 -->
+                <div v-show="node.expanded" class="view-div">
+                    <div v-if="node.isCustom" class="custom-sql-section">
+                        <div class="sql-query">
+                            <textarea 
+                                v-model="sqlInput" 
+                                placeholder="请输入 SQL 查询语句..."
+                                class="sql-textarea"
+                                rows="3"
+                            ></textarea>
+                            <button @click="executeCustomQuery(index)" class="execute-btn" :disabled="isLoading">
+                                ▶️ 执行查询
                             </button>
-                        </template>
-                        <button :disabled="node.currentPage * node.pageSize > node.total"
-                            @click="renderPage(node, index, node.currentPage + 1)">下一页</button>
-                        第 {{ node.currentPage }} 页 / 共 {{ Math.ceil(node.total / node.pageSize) }} 页 / 共 {{ node.total }} 条记录
-                        <select name="page-size" id="page-size" v-model="node.pageSize">
-                            <option v-for="pageSize in [10, 20, 50, 100]" :key="pageSize" :value="pageSize"
-                                @click="changePageSize(node, index, pageSize)">
-                                {{ pageSize }}
-                            </option>
+                        </div>
+                    </div>
+                    
+                    <!-- Pagination Controls -->
+                    <div v-if="!node.isCustom && node.data && node.total > 0" class="pagination-container">
+                        <div class="pagination-info">
+                            第 {{ node.currentPage }} 页 / 共 {{ Math.ceil(node.total / node.pageSize) }} 页 
+                            / 总计 {{ node.total.toLocaleString() }} 条记录
+                        </div>
+                        
+                        <div class="pagination-controls">
+                            <button 
+                                :disabled="node.currentPage === 1" 
+                                @click="renderPage(node, index, node.currentPage - 1)"
+                                class="pagination-btn"
+                            >
+                                ⏮️ 上一页
+                            </button>
+                            
+                            <!-- 页码按钮 -->
+                            <template v-for="page in visiblePages(node)" :key="page">
+                                <button 
+                                    :class="{ 
+                                        'pagination-btn': true,
+                                        'pagination-btn-active': page === node.currentPage,
+                                        'pagination-btn-ellipsis': page === '...'
+                                    }" 
+                                    :disabled="page === '...'"
+                                    @click="renderPage(node, index, page)"
+                                >
+                                    {{ page }}
+                                </button>
+                            </template>
+                            
+                            <button 
+                                :disabled="node.currentPage * node.pageSize >= node.total"
+                                @click="renderPage(node, index, node.currentPage + 1)"
+                                class="pagination-btn"
+                            >
+                                下一页 ⏭️
+                            </button>
+                        </div>
+                        
+                        <div class="page-size-control">
+                            <label for="page-size">每页显示:</label>
+                            <select 
+                                v-model="node.pageSize" 
+                                @change="changePageSize(node, index, node.pageSize)"
+                                class="page-size-select"
+                            >
+                                <option v-for="size in [10, 20, 50, 100, 200]" :key="size" :value="size">
+                                    {{ size }}
+                                </option>
+                            </select>
+                        </div>
+                    </div>
 
-                        </select>
+                    <!-- Data Table -->
+                    <div v-if="node.data && node.data.length > 0" class="table-container">
+                        <div class="table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th class="row-number-header">#</th>
+                                        <th v-for="(column, columnIndex) in node.columns" :key="columnIndex" class="column-header">
+                                            {{ column }}
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="(row, rowIndex) in node.data" :key="rowIndex" class="data-row">
+                                        <td class="row-number">{{ node.pageSize * (node.currentPage - 1) + rowIndex + 1}}</td>
+                                        <td v-for="(column, columnIndex) in node.columns" :key="columnIndex" class="data-cell">
+                                            <span :title="row[column]" class="cell-content">
+                                                {{ row[column] === null ? '(NULL)' : row[column] }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div v-else-if="node.expanded && !node.isLoading" class="no-data-message">
+                        📭 暂无数据
                     </div>
                 </div>
-
-                <div v-if="node.data && node.data.length > 0" class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>row</th>
-                                <th v-for="(column, columnIndex) in node.columns" :key="columnIndex">{{ column }}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="(row, rowIndex) in node.data" :key="rowIndex">
-                                <td>{{ node.pageSize * (node.currentPage - 1) + rowIndex + 1}}</td>
-                                <td v-for="(column, columnIndex) in node.columns" :key="columnIndex">
-                                    <span :title="row[column]">{{ row[column] }}</span>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <p v-else>暂无数据</p>
             </div>
         </div>
     </div>
 
-    <script
-        src="[[PLUGIN_STATIC_DIR]]/scripts.js"></script>
+    <script src="[[PLUGIN_STATIC_DIR]]/scripts.js"></script>
 </body>
 
 </html>

@@ -6,24 +6,41 @@ try {
         data: {
             currentNodeName: '',
             treeNodes: [],
-            sqlInput: 'select * from xxxxx limit 10',
+            sqlInput: 'SELECT * FROM xxxxx LIMIT 10',
+            isLoading: false,
+            loadingMessage: '',
+            searchQuery: '',
+        },
+        computed: {
+            filteredTreeNodes: function() {
+                if (!this.searchQuery) {
+                    return this.treeNodes;
+                }
+                return this.treeNodes.filter(node => 
+                    node.label.toLowerCase().includes(this.searchQuery.toLowerCase())
+                );
+            }
         },
         mounted: async function () {
+            this.showLoading('正在加载数据库表列表...');
             that = this;
-            var tableNames = JSON.parse(await chrome.webview.hostObjects.external.GetTableNames());
             try {
+                var tableNames = JSON.parse(await chrome.webview.hostObjects.external.GetTableNames());
                 if (Object.prototype.toString.call(tableNames) === '[object Array]') {
                     var treeNodes = tableNames.map(function (tableName) {
                         return that.genNodeInfo(false, tableName, tableName);
                     });
                     treeNodes.push(that.genNodeInfo(true, customKey, 'SQL 自定义查询'));
                     that.treeNodes = treeNodes;
-                    that.sqlInput = 'select * from ' + tableNames[0] + ' limit 10';
+                    that.sqlInput = 'SELECT * FROM ' + (tableNames[0] || 'table_name') + ' LIMIT 10';
                 } else {
-                    alert('加载表列表失败: 返回的数据不是数组' + '\n\n堆栈信息:\n' + error.stack);
+                    that.showError('加载表列表失败: 返回的数据不是数组');
                 }
             } catch (error) {
-                alert('加载表列表失败: ' + error.message + '\n\n堆栈信息:\n' + error.stack);
+                that.showError('加载表列表失败: ' + error.message);
+                console.error('Error details:', error);
+            } finally {
+                this.hideLoading();
             }
         },
         methods: {
@@ -37,15 +54,34 @@ try {
                     columns: [],
                     total: 0,
                     currentPage: 1,
-                    pageSize: 10,
+                    pageSize: 20, // Increased default page size
+                    isLoading: false,
+                    lastQuery: null,
                 };
             },
+            
+            showLoading: function(message) {
+                this.isLoading = true;
+                this.loadingMessage = message || '加载中...';
+            },
+            
+            hideLoading: function() {
+                this.isLoading = false;
+                this.loadingMessage = '';
+            },
+            
+            showError: function(message) {
+                // Modern error display - could be enhanced with a toast component
+                alert('错误: ' + message);
+                console.error('Application error:', message);
+            },
+
             /**
              * 切换树节点的展开/折叠状态
-             * @param {HTMLElement} treeNode - 树节点元素
-             * @param {string} tableName - 表名或 '##custom-sql##' 标识
+             * @param {Object} treeNode - 树节点对象
+             * @param {number} index - 节点索引
              */
-            toggleNode: function (treeNode, index) {
+            toggleNode: async function (treeNode, index) {
                 var that = this;
                 that.currentNodeName = treeNode['name'];
                 treeNode['expanded'] = !treeNode['expanded'];
@@ -53,119 +89,185 @@ try {
                 if (treeNode.isCustom) {
                     return;
                 }
+                
                 if (index < 0 || index >= this.treeNodes.length) {
-                    alert('无效的索引:', index);
+                    that.showError('无效的索引: ' + index);
                     return;
                 }
-                if (treeNode.data === undefined) {
-                    that.reloadTableData(treeNode, index);
+                
+                if (treeNode.data === undefined && treeNode.expanded) {
+                    await that.loadTableInfo(treeNode, index);
                 }
             },
-            reloadTableData: async function (treeNode, index) {
-                that = this;
-                treeNode.total = await chrome.webview.hostObjects.external.GetTableRecordCount(treeNode.name);
-                treeNode.columns = JSON.parse(await chrome.webview.hostObjects.external.GetTableColumns(treeNode.name));
+            
+            loadTableInfo: async function(treeNode, index) {
+                treeNode.isLoading = true;
+                try {
+                    // Use the new GetTableInfo method for better performance
+                    var tableInfoResult = await chrome.webview.hostObjects.external.GetTableInfo(treeNode.name);
+                    var tableInfo = JSON.parse(tableInfoResult);
+                    
+                    if (tableInfo.status) {
+                        treeNode.total = tableInfo.estimatedRowCount;
+                        treeNode.columns = tableInfo.columns.map(col => col.name);
+                        treeNode.columnInfo = tableInfo.columns; // Store full column info
+                        
+                        // Load first page of data
+                        await this.loadTableData(treeNode, index, 1);
+                    } else {
+                        this.showError('获取表信息失败: ' + tableInfo.message);
+                    }
+                } catch (error) {
+                    this.showError('获取表信息失败: ' + error.message);
+                } finally {
+                    treeNode.isLoading = false;
+                }
+            },
+            
+            loadTableData: async function(treeNode, index, page) {
+                if (!page) page = treeNode.currentPage;
+                treeNode.currentPage = page;
+                
+                var offset = (page - 1) * treeNode.pageSize;
+                var sqlQuery = `SELECT * FROM \`${treeNode.name}\` LIMIT ${treeNode.pageSize} OFFSET ${offset}`;
+                
+                await this.renderTableData(sqlQuery, index);
+            },
 
-                var sqlQuery = "SELECT * FROM " + treeNode.name + " LIMIT " + treeNode.pageSize;
-                await that.renderTableData(sqlQuery, index);
+            reloadTableData: async function (treeNode, index) {
+                await this.loadTableInfo(treeNode, index);
             },
             renderTableData: async function (sqlQuery, index) {
                 if (index < 0 || index >= this.treeNodes.length) {
-                    alert('无效的索引:', index);
+                    this.showError('无效的索引: ' + index);
                     return;
                 }
-                var data = await that.getTableData(sqlQuery);
-                var columns = [];
-                if (data && data.length > 0) {
-                    columns = Object.keys(data[0]);
+                
+                var node = this.treeNodes[index];
+                node.isLoading = true;
+                
+                try {
+                    var data = await this.getTableData(sqlQuery);
+                    var columns = [];
+                    if (data && data.length > 0) {
+                        columns = Object.keys(data[0]);
+                    }
+                    
+                    Vue.set(this.treeNodes[index], "data", data);
+                    Vue.set(this.treeNodes[index], "columns", columns);
+                    Vue.set(this.treeNodes[index], "lastQuery", sqlQuery);
+                } catch (error) {
+                    this.showError('渲染表数据失败: ' + error.message);
+                } finally {
+                    node.isLoading = false;
                 }
-                Vue.set(that.treeNodes[index], "data", data);
-                Vue.set(that.treeNodes[index], "columns", columns);
             },
+            
             getTableData: async function (sqlQuery) {
-                that.showLoading();
                 try {
                     var res = JSON.parse(await chrome.webview.hostObjects.external.LoadTableData(sqlQuery, false));
                     if (res.status && Array.isArray(res.data)) {
                         return res.data;
                     } else {
-                        alert('加载数据失败: ' + (res.message || '返回的数据不是数组'));
+                        throw new Error(res.message || '返回的数据不是数组');
                     }
                 } catch (error) {
-                    alert('加载数据时发生错误: ' + error.message + '\n\n堆栈信息:\n' + error.stack);
-                } finally {
-                    that.hideLoading();
+                    console.error('加载数据时发生错误:', error);
+                    throw error;
                 }
-                return [];
             },
-            getRenderData: function (treeNode) {
-                if (treeNode.isCustom) {
-                    return treeNode.data;
-                }
-                return treeNode.data.slice((treeNode.currentPage - 1) * treeNode.pageSize, treeNode.currentPage * treeNode.pageSize);
-            },
+
             renderPage: async function (treeNode, index, page) {
-                treeNode.currentPage = page;
-                var sqlQuery = "SELECT * FROM " + treeNode.name + " LIMIT " + treeNode.pageSize + " OFFSET " + (treeNode.currentPage - 1) * treeNode.pageSize;
-                await that.renderTableData(sqlQuery, index);
+                if (typeof page === 'string' && page === '...') {
+                    return; // Ignore ellipsis clicks
+                }
+                
+                await this.loadTableData(treeNode, index, page);
             },
+            
             changePageSize: async function (treeNode, index, pageSize) {
                 treeNode.currentPage = 1;
-                treeNode.pageSize = pageSize;
-                // this.set(this.treeNodes[index], "currentPage", 1);
-                // this.set(this.treeNodes[index], "pageSize", pageSize);
-                var sqlQuery = "SELECT * FROM " + treeNode.name + " LIMIT " + treeNode.pageSize + " OFFSET " + (treeNode.currentPage - 1) * treeNode.pageSize;
-                await that.renderTableData(sqlQuery, index);
+                treeNode.pageSize = parseInt(pageSize);
+                await this.loadTableData(treeNode, index, 1);
             },
 
+            // Enhanced search functionality
+            clearSearch: function() {
+                this.searchQuery = '';
+            },
+            
+            // Execute custom SQL query with better error handling
+            executeCustomQuery: async function(index) {
+                var sqlQuery = this.sqlInput.trim();
+                if (!sqlQuery) {
+                    this.showError('请输入SQL查询语句');
+                    return;
+                }
+                
+                this.showLoading('执行查询中...');
+                try {
+                    await this.renderTableData(sqlQuery, index);
+                } catch (error) {
+                    this.showError('查询执行失败: ' + error.message);
+                } finally {
+                    this.hideLoading();
+                }
+            },
 
             /**
-            * 计算需要显示的页码范围
+            * 计算需要显示的页码范围 - Enhanced for better UX
             * @param {Object} node - 分页数据对象
             * @returns {Array} - 包含页码或省略号的数组
             */
             visiblePages: function (node) {
-                const totalPages = Math.ceil(node.total / node.pageSize); // 总页数
-                const currentPage = node.currentPage; // 当前页
+                const totalPages = Math.ceil(node.total / node.pageSize);
+                const currentPage = node.currentPage;
                 const range = [];
 
-                if (totalPages <= 5) {
-                    // 如果总页数小于等于5，直接显示所有页码
+                if (totalPages <= 7) {
+                    // If total pages is small, show all
                     for (let i = 1; i <= totalPages; i++) {
                         range.push(i);
                     }
                 } else {
-                    // 否则，显示当前页及前后两页
-                    let start = Math.max(1, currentPage - 2);
-                    let end = Math.min(totalPages, currentPage + 2);
-
-                    if (start > 1) {
-                        range.push(1); // 始终显示第一页
-                        if (start > 2) {
-                            range.push('...'); // 添加省略号
-                        }
+                    // Always show first page
+                    range.push(1);
+                    
+                    let start = Math.max(2, currentPage - 2);
+                    let end = Math.min(totalPages - 1, currentPage + 2);
+                    
+                    // Add ellipsis if there's a gap
+                    if (start > 2) {
+                        range.push('...');
                     }
-
+                    
+                    // Add middle pages
                     for (let i = start; i <= end; i++) {
                         range.push(i);
                     }
-
-                    if (end < totalPages) {
-                        if (end < totalPages - 1) {
-                            range.push('...'); // 添加省略号
-                        }
-                        range.push(totalPages); // 始终显示最后一页
+                    
+                    // Add ellipsis if there's a gap before last page
+                    if (end < totalPages - 1) {
+                        range.push('...');
+                    }
+                    
+                    // Always show last page (if more than 1 page)
+                    if (totalPages > 1) {
+                        range.push(totalPages);
                     }
                 }
 
                 return range;
             },
 
+            // Utility methods kept for compatibility
             showLoading: function () {
                 // document.getElementById('loading').style.display = 'block';
+                console.log('Loading...');
             },
             hideLoading: function () {
                 // document.getElementById('loading').style.display = 'none';
+                console.log('Loading complete');
             }
         },
     });
