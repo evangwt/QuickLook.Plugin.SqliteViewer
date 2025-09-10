@@ -315,46 +315,68 @@ namespace QuickLook.Plugin.SqliteViewer
 
         public Task<string> GetTableNames()
         {
-            using (var connection = new SQLiteConnection($"Data Source={_filePath};Mode=ReadOnly;"))
+            try
             {
-                connection.Open();
-                var query = connection.CreateCommand();
-                query.CommandText = "SELECT name FROM sqlite_master WHERE type='table';";
-                var tableNames = new List<string>();
-                using (var reader = query.ExecuteReader())
+                using (var connection = new SQLiteConnection($"Data Source={_filePath};Mode=ReadOnly;"))
                 {
-                    while (reader.Read())
+                    connection.Open();
+                    
+                    // Add timeout for large databases
+                    connection.DefaultTimeout = 15;
+                    
+                    var query = connection.CreateCommand();
+                    query.CommandText = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;";
+                    var tableNames = new List<string>();
+                    using (var reader = query.ExecuteReader())
                     {
-                        tableNames.Add(reader.GetString(0));
+                        while (reader.Read())
+                        {
+                            tableNames.Add(reader.GetString(0));
+                        }
                     }
+                    Logger.Instance.Debug($"发现 {tableNames.Count} 个表");
+                    return Task.FromResult(JsonConvert.SerializeObject(tableNames, Formatting.Indented));
                 }
-                //return tableNames.ToArray();
-                return Task.FromResult(JsonConvert.SerializeObject(tableNames, Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+                Logger.Instance.Error($"获取表名列表失败: {ex.Message}");
+                // Return empty array instead of null to prevent frontend errors
+                return Task.FromResult(JsonConvert.SerializeObject(new List<string>(), Formatting.Indented));
             }
         }
 
         public Task<int> GetTableRecordCount(string tableName)
         {
-            using (var connection = new SQLiteConnection($"Data Source={_filePath};Mode=ReadOnly;"))
+            try
             {
-                connection.Open();
-                var query = connection.CreateCommand();
-                
-                // Use sqlite_stat1 if available for better performance on large tables
-                query.CommandText = $"SELECT stat FROM sqlite_stat1 WHERE tbl = '{tableName}'";
-                var statResult = query.ExecuteScalar();
-                
-                if (statResult != null && long.TryParse(statResult.ToString(), out long estimatedCount))
+                using (var connection = new SQLiteConnection($"Data Source={_filePath};Mode=ReadOnly;"))
                 {
-                    Logger.Instance.Debug($"Using estimated count from sqlite_stat1: {estimatedCount}");
-                    return Task.FromResult((int)estimatedCount);
+                    connection.Open();
+                    connection.DefaultTimeout = 20; // 20 second timeout for count operations
+                    var query = connection.CreateCommand();
+                    
+                    // Use sqlite_stat1 if available for better performance on large tables
+                    query.CommandText = $"SELECT stat FROM sqlite_stat1 WHERE tbl = '{tableName}'";
+                    var statResult = query.ExecuteScalar();
+                    
+                    if (statResult != null && long.TryParse(statResult.ToString(), out long estimatedCount))
+                    {
+                        Logger.Instance.Debug($"Using estimated count from sqlite_stat1: {estimatedCount}");
+                        return Task.FromResult((int)estimatedCount);
+                    }
+                    
+                    // Fallback to exact count for smaller tables or when stats are not available
+                    query.CommandText = $"SELECT count(*) FROM `{tableName}`";
+                    var recordCount = (long)query.ExecuteScalar();
+                    Logger.Instance.Debug($"Using exact count: {recordCount}");
+                    return Task.FromResult((int)recordCount);
                 }
-                
-                // Fallback to exact count for smaller tables or when stats are not available
-                query.CommandText = $"SELECT count(*) FROM `{tableName}`";
-                var recordCount = (long)query.ExecuteScalar();
-                Logger.Instance.Debug($"Using exact count: {recordCount}");
-                return Task.FromResult((int)recordCount);
+            }
+            catch (Exception ex)
+            {
+                Logger.Instance.Error($"获取表 {tableName} 记录数失败: {ex.Message}");
+                return Task.FromResult(0); // Return 0 instead of throwing to prevent UI errors
             }
         }
 

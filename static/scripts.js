@@ -42,6 +42,13 @@ try {
             } finally {
                 this.hideLoading();
             }
+            
+            // Add keyboard shortcuts
+            document.addEventListener('keydown', this.handleKeydown);
+        },
+        
+        beforeDestroy: function() {
+            document.removeEventListener('keydown', this.handleKeydown);
         },
         methods: {
             genNodeInfo: function (isCustom, tableName, label) {
@@ -126,6 +133,12 @@ try {
             
             loadTableData: async function(treeNode, index, page) {
                 if (!page) page = treeNode.currentPage;
+                
+                // Avoid unnecessary requests if already on the same page
+                if (page === treeNode.currentPage && treeNode.data && treeNode.data.length > 0) {
+                    return;
+                }
+                
                 treeNode.currentPage = page;
                 
                 var offset = (page - 1) * treeNode.pageSize;
@@ -194,6 +207,30 @@ try {
             // Enhanced search functionality
             clearSearch: function() {
                 this.searchQuery = '';
+            },
+            
+            // Handle keyboard shortcuts
+            handleKeydown: function(event) {
+                // Ctrl/Cmd + F to focus search
+                if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+                    event.preventDefault();
+                    var searchInput = document.querySelector('.search-input');
+                    if (searchInput) {
+                        searchInput.focus();
+                        searchInput.select();
+                    }
+                }
+                
+                // Escape to clear search
+                if (event.key === 'Escape' && this.searchQuery) {
+                    this.clearSearch();
+                }
+                
+                // F5 to refresh (reload table list)
+                if (event.key === 'F5') {
+                    event.preventDefault();
+                    window.location.reload();
+                }
             },
             
             // Execute custom SQL query with better error handling
