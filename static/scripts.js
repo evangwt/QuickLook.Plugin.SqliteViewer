@@ -1,43 +1,55 @@
 var customKey = '##custom-sql##';
+var tabIdCounter = 0;
 
 try {
     var app = new Vue({
         el: '#app',
         data: {
-            currentNodeName: '',
-            treeNodes: [],
-            sqlInput: 'SELECT * FROM xxxxx LIMIT 10',
+            // Global state
             isLoading: false,
             loadingMessage: '',
-            searchQuery: '',
+            
+            // Table data
+            tableNames: [],
+            tableInfoCache: {},
+            sidebarSearchQuery: '',
+            
+            // Tab system
+            activeTabs: [],
+            currentTabId: null,
+            
+            // Default SQL for new custom queries
+            defaultSqlTemplate: 'SELECT * FROM table_name LIMIT 10'
         },
         computed: {
-            filteredTreeNodes: function() {
-                if (!this.searchQuery) {
-                    return this.treeNodes;
+            filteredTableNames: function() {
+                if (!this.sidebarSearchQuery) {
+                    return this.tableNames;
                 }
-                return this.treeNodes.filter(node => 
-                    node.label.toLowerCase().includes(this.searchQuery.toLowerCase())
+                return this.tableNames.filter(tableName => 
+                    tableName.toLowerCase().includes(this.sidebarSearchQuery.toLowerCase())
                 );
+            },
+            
+            currentTab: function() {
+                return this.activeTabs.find(tab => tab.id === this.currentTabId);
             }
         },
         mounted: async function () {
             this.showLoading('正在加载数据库表列表...');
-            that = this;
             try {
                 var tableNames = JSON.parse(await chrome.webview.hostObjects.external.GetTableNames());
-                if (Object.prototype.toString.call(tableNames) === '[object Array]') {
-                    var treeNodes = tableNames.map(function (tableName) {
-                        return that.genNodeInfo(false, tableName, tableName);
-                    });
-                    treeNodes.push(that.genNodeInfo(true, customKey, 'SQL 自定义查询'));
-                    that.treeNodes = treeNodes;
-                    that.sqlInput = 'SELECT * FROM ' + (tableNames[0] || 'table_name') + ' LIMIT 10';
+                if (Array.isArray(tableNames)) {
+                    this.tableNames = tableNames;
+                    this.defaultSqlTemplate = 'SELECT * FROM ' + (tableNames[0] || 'table_name') + ' LIMIT 10';
+                    
+                    // Pre-load table info for sidebar display
+                    await this.preloadTableInfo();
                 } else {
-                    that.showError('加载表列表失败: 返回的数据不是数组');
+                    this.showError('加载表列表失败: 返回的数据不是数组');
                 }
             } catch (error) {
-                that.showError('加载表列表失败: ' + error.message);
+                this.showError('加载表列表失败: ' + error.message);
                 console.error('Error details:', error);
             } finally {
                 this.hideLoading();
@@ -50,23 +62,9 @@ try {
         beforeDestroy: function() {
             document.removeEventListener('keydown', this.handleKeydown);
         },
+        
         methods: {
-            genNodeInfo: function (isCustom, tableName, label) {
-                return {
-                    isCustom: isCustom,
-                    name: tableName,
-                    label: label,
-                    expanded: isCustom,
-                    data: undefined,
-                    columns: [],
-                    total: 0,
-                    currentPage: 1,
-                    pageSize: 20, // Increased default page size
-                    isLoading: false,
-                    lastQuery: null,
-                };
-            },
-            
+            // Loading states
             showLoading: function(message) {
                 this.isLoading = true;
                 this.loadingMessage = message || '加载中...';
@@ -78,104 +76,247 @@ try {
             },
             
             showError: function(message) {
-                // Modern error display - could be enhanced with a toast component
+                console.error(message);
                 alert('错误: ' + message);
-                console.error('Application error:', message);
             },
-
-            /**
-             * 切换树节点的展开/折叠状态
-             * @param {Object} treeNode - 树节点对象
-             * @param {number} index - 节点索引
-             */
-            toggleNode: async function (treeNode, index) {
-                var that = this;
-                that.currentNodeName = treeNode['name'];
-                treeNode['expanded'] = !treeNode['expanded'];
-
-                if (treeNode.isCustom) {
-                    return;
-                }
-                
-                if (index < 0 || index >= this.treeNodes.length) {
-                    that.showError('无效的索引: ' + index);
-                    return;
-                }
-                
-                if (treeNode.data === undefined && treeNode.expanded) {
-                    await that.loadTableInfo(treeNode, index);
+            
+            // Table info management
+            preloadTableInfo: async function() {
+                // Load basic info for all tables to show in sidebar
+                for (let tableName of this.tableNames) {
+                    try {
+                        if (!this.tableInfoCache[tableName]) {
+                            var tableInfoResult = await chrome.webview.hostObjects.external.GetTableInfo(tableName);
+                            var tableInfo = JSON.parse(tableInfoResult);
+                            if (tableInfo.status) {
+                                this.tableInfoCache[tableName] = {
+                                    estimatedRowCount: tableInfo.estimatedRowCount,
+                                    columns: tableInfo.columns
+                                };
+                            }
+                        }
+                    } catch (error) {
+                        console.warn('Failed to load info for table ' + tableName, error);
+                    }
                 }
             },
             
-            loadTableInfo: async function(treeNode, index) {
-                treeNode.isLoading = true;
-                try {
-                    // Use the new GetTableInfo method for better performance
-                    var tableInfoResult = await chrome.webview.hostObjects.external.GetTableInfo(treeNode.name);
-                    var tableInfo = JSON.parse(tableInfoResult);
+            getTableInfo: function(tableName) {
+                return this.tableInfoCache[tableName];
+            },
+            
+            formatRowCount: function(count) {
+                if (count < 1000) return count.toString();
+                if (count < 1000000) return (count / 1000).toFixed(1) + 'K';
+                return (count / 1000000).toFixed(1) + 'M';
+            },
+            
+            // Tab management
+            generateTabId: function() {
+                return ++tabIdCounter;
+            },
+            
+            openTableTab: function(tableName, force = false) {
+                // Check if tab already exists
+                var existingTab = this.activeTabs.find(tab => 
+                    tab.type === 'table' && tab.tableName === tableName
+                );
+                
+                if (existingTab && !force) {
+                    this.switchTab(existingTab.id);
+                    return;
+                }
+                
+                // Create new tab
+                var tabId = this.generateTabId();
+                var newTab = {
+                    id: tabId,
+                    type: 'table',
+                    title: tableName,
+                    tableName: tableName,
                     
-                    if (tableInfo.status) {
-                        treeNode.total = tableInfo.estimatedRowCount;
-                        treeNode.columns = tableInfo.columns.map(col => col.name);
-                        treeNode.columnInfo = tableInfo.columns; // Store full column info
-                        
-                        // Load first page of data
-                        await this.loadTableData(treeNode, index, 1);
+                    // Table state
+                    data: null,
+                    columns: [],
+                    total: 0,
+                    currentPage: 1,
+                    pageSize: 100,
+                    isLoading: false
+                };
+                
+                this.activeTabs.push(newTab);
+                this.switchTab(tabId);
+                
+                // Load table data
+                this.loadTableTabData(tabId);
+            },
+            
+            openCustomSqlTab: function() {
+                var tabId = this.generateTabId();
+                var customTabCount = this.activeTabs.filter(tab => tab.type === 'custom').length;
+                var tabTitle = 'SQL查询' + (customTabCount > 0 ? ' (' + (customTabCount + 1) + ')' : '');
+                
+                var newTab = {
+                    id: tabId,
+                    type: 'custom',
+                    title: tabTitle,
+                    
+                    // SQL state
+                    sqlQuery: this.defaultSqlTemplate,
+                    data: null,
+                    columns: [],
+                    isLoading: false
+                };
+                
+                this.activeTabs.push(newTab);
+                this.switchTab(tabId);
+            },
+            
+            switchTab: function(tabId) {
+                this.currentTabId = tabId;
+            },
+            
+            closeTab: function(tabId) {
+                var tabIndex = this.activeTabs.findIndex(tab => tab.id === tabId);
+                if (tabIndex === -1) return;
+                
+                this.activeTabs.splice(tabIndex, 1);
+                
+                // Switch to another tab if current tab was closed
+                if (this.currentTabId === tabId) {
+                    if (this.activeTabs.length > 0) {
+                        // Switch to the adjacent tab or the last tab
+                        var newIndex = Math.min(tabIndex, this.activeTabs.length - 1);
+                        this.switchTab(this.activeTabs[newIndex].id);
                     } else {
-                        this.showError('获取表信息失败: ' + tableInfo.message);
+                        this.currentTabId = null;
                     }
-                } catch (error) {
-                    this.showError('获取表信息失败: ' + error.message);
-                } finally {
-                    treeNode.isLoading = false;
                 }
             },
             
-            loadTableData: async function(treeNode, index, page) {
-                if (!page) page = treeNode.currentPage;
-                
-                // Avoid unnecessary requests if already on the same page
-                if (page === treeNode.currentPage && treeNode.data && treeNode.data.length > 0) {
-                    return;
-                }
-                
-                treeNode.currentPage = page;
-                
-                var offset = (page - 1) * treeNode.pageSize;
-                var sqlQuery = `SELECT * FROM \`${treeNode.name}\` LIMIT ${treeNode.pageSize} OFFSET ${offset}`;
-                
-                await this.renderTableData(sqlQuery, index);
+            hasActiveTab: function(tableName) {
+                return this.activeTabs.some(tab => 
+                    tab.type === 'table' && tab.tableName === tableName
+                );
             },
-
-            reloadTableData: async function (treeNode, index) {
-                await this.loadTableInfo(treeNode, index);
-            },
-            renderTableData: async function (sqlQuery, index) {
-                if (index < 0 || index >= this.treeNodes.length) {
-                    this.showError('无效的索引: ' + index);
-                    return;
-                }
+            
+            // Table tab operations
+            loadTableTabData: async function(tabId, page = 1) {
+                var tab = this.activeTabs.find(t => t.id === tabId);
+                if (!tab || tab.type !== 'table') return;
                 
-                var node = this.treeNodes[index];
-                node.isLoading = true;
+                tab.isLoading = true;
                 
                 try {
-                    var data = await this.getTableData(sqlQuery);
-                    var columns = [];
-                    if (data && data.length > 0) {
-                        columns = Object.keys(data[0]);
+                    // Load table info if not cached
+                    if (!this.tableInfoCache[tab.tableName]) {
+                        var tableInfoResult = await chrome.webview.hostObjects.external.GetTableInfo(tab.tableName);
+                        var tableInfo = JSON.parse(tableInfoResult);
+                        if (tableInfo.status) {
+                            this.tableInfoCache[tab.tableName] = {
+                                estimatedRowCount: tableInfo.estimatedRowCount,
+                                columns: tableInfo.columns
+                            };
+                        }
                     }
                     
-                    Vue.set(this.treeNodes[index], "data", data);
-                    Vue.set(this.treeNodes[index], "columns", columns);
-                    Vue.set(this.treeNodes[index], "lastQuery", sqlQuery);
+                    var cachedInfo = this.tableInfoCache[tab.tableName];
+                    if (cachedInfo) {
+                        tab.total = cachedInfo.estimatedRowCount;
+                        tab.columns = cachedInfo.columns.map(col => col.name);
+                    }
+                    
+                    // Load page data
+                    tab.currentPage = page;
+                    var offset = (page - 1) * tab.pageSize;
+                    var sqlQuery = `SELECT * FROM \`${tab.tableName}\` LIMIT ${tab.pageSize} OFFSET ${offset}`;
+                    
+                    var data = await this.getTableData(sqlQuery);
+                    tab.data = data;
+                    
+                    if (data && data.length > 0 && tab.columns.length === 0) {
+                        tab.columns = Object.keys(data[0]);
+                    }
+                    
                 } catch (error) {
-                    this.showError('渲染表数据失败: ' + error.message);
+                    this.showError('加载表数据失败: ' + error.message);
                 } finally {
-                    node.isLoading = false;
+                    tab.isLoading = false;
                 }
             },
             
+            navigateToPage: async function(tabId, page) {
+                if (typeof page === 'string' && page === '...') {
+                    return; // Ignore ellipsis clicks
+                }
+                await this.loadTableTabData(tabId, page);
+            },
+            
+            changeTabPageSize: async function(tabId, newPageSize) {
+                var tab = this.activeTabs.find(t => t.id === tabId);
+                if (!tab) return;
+                
+                tab.pageSize = newPageSize;
+                tab.currentPage = 1; // Reset to first page
+                await this.loadTableTabData(tabId, 1);
+            },
+            
+            refreshTable: async function(tabId) {
+                var tab = this.activeTabs.find(t => t.id === tabId);
+                if (!tab || tab.type !== 'table') return;
+                
+                // Clear cache for this table
+                delete this.tableInfoCache[tab.tableName];
+                
+                // Reload data
+                await this.loadTableTabData(tabId, tab.currentPage);
+            },
+            
+            exportTable: function(tabId) {
+                // TODO: Implement table export functionality
+                alert('导出功能正在开发中...');
+            },
+            
+            // Custom SQL operations
+            executeCustomQuery: async function(tabId) {
+                var tab = this.activeTabs.find(t => t.id === tabId);
+                if (!tab || tab.type !== 'custom') return;
+                
+                if (!tab.sqlQuery || !tab.sqlQuery.trim()) {
+                    this.showError('请输入 SQL 查询语句');
+                    return;
+                }
+                
+                tab.isLoading = true;
+                
+                try {
+                    var data = await this.getTableData(tab.sqlQuery);
+                    tab.data = data;
+                    
+                    if (data && data.length > 0) {
+                        tab.columns = Object.keys(data[0]);
+                    } else {
+                        tab.columns = [];
+                    }
+                } catch (error) {
+                    this.showError('SQL 查询失败: ' + error.message);
+                    tab.data = null;
+                    tab.columns = [];
+                } finally {
+                    tab.isLoading = false;
+                }
+            },
+            
+            clearCustomQuery: function(tabId) {
+                var tab = this.activeTabs.find(t => t.id === tabId);
+                if (!tab || tab.type !== 'custom') return;
+                
+                tab.sqlQuery = this.defaultSqlTemplate;
+                tab.data = null;
+                tab.columns = [];
+            },
+            
+            // Data loading
             getTableData: async function (sqlQuery) {
                 try {
                     var res = JSON.parse(await chrome.webview.hostObjects.external.LoadTableData(sqlQuery, false));
@@ -189,126 +330,76 @@ try {
                     throw error;
                 }
             },
-
-            renderPage: async function (treeNode, index, page) {
-                if (typeof page === 'string' && page === '...') {
-                    return; // Ignore ellipsis clicks
-                }
-                
-                await this.loadTableData(treeNode, index, page);
-            },
             
-            changePageSize: async function (treeNode, index, pageSize) {
-                treeNode.currentPage = 1;
-                treeNode.pageSize = parseInt(pageSize);
-                await this.loadTableData(treeNode, index, 1);
-            },
-
-            // Enhanced search functionality
-            clearSearch: function() {
-                this.searchQuery = '';
-            },
-            
-            // Handle keyboard shortcuts
-            handleKeydown: function(event) {
-                // Ctrl/Cmd + F to focus search
-                if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
-                    event.preventDefault();
-                    var searchInput = document.querySelector('.search-input');
-                    if (searchInput) {
-                        searchInput.focus();
-                        searchInput.select();
-                    }
-                }
+            // Pagination helpers
+            visiblePages: function(tab) {
+                if (!tab || tab.total === 0) return [];
                 
-                // Escape to clear search
-                if (event.key === 'Escape' && this.searchQuery) {
-                    this.clearSearch();
-                }
+                var currentPage = tab.currentPage;
+                var totalPages = Math.ceil(tab.total / tab.pageSize);
+                var pages = [];
                 
-                // F5 to refresh (reload table list)
-                if (event.key === 'F5') {
-                    event.preventDefault();
-                    window.location.reload();
-                }
-            },
-            
-            // Execute custom SQL query with better error handling
-            executeCustomQuery: async function(index) {
-                var sqlQuery = this.sqlInput.trim();
-                if (!sqlQuery) {
-                    this.showError('请输入SQL查询语句');
-                    return;
-                }
-                
-                this.showLoading('执行查询中...');
-                try {
-                    await this.renderTableData(sqlQuery, index);
-                } catch (error) {
-                    this.showError('查询执行失败: ' + error.message);
-                } finally {
-                    this.hideLoading();
-                }
-            },
-
-            /**
-            * 计算需要显示的页码范围 - Enhanced for better UX
-            * @param {Object} node - 分页数据对象
-            * @returns {Array} - 包含页码或省略号的数组
-            */
-            visiblePages: function (node) {
-                const totalPages = Math.ceil(node.total / node.pageSize);
-                const currentPage = node.currentPage;
-                const range = [];
-
                 if (totalPages <= 7) {
-                    // If total pages is small, show all
-                    for (let i = 1; i <= totalPages; i++) {
-                        range.push(i);
+                    for (var i = 1; i <= totalPages; i++) {
+                        pages.push(i);
                     }
                 } else {
-                    // Always show first page
-                    range.push(1);
-                    
-                    let start = Math.max(2, currentPage - 2);
-                    let end = Math.min(totalPages - 1, currentPage + 2);
-                    
-                    // Add ellipsis if there's a gap
-                    if (start > 2) {
-                        range.push('...');
-                    }
-                    
-                    // Add middle pages
-                    for (let i = start; i <= end; i++) {
-                        range.push(i);
-                    }
-                    
-                    // Add ellipsis if there's a gap before last page
-                    if (end < totalPages - 1) {
-                        range.push('...');
-                    }
-                    
-                    // Always show last page (if more than 1 page)
-                    if (totalPages > 1) {
-                        range.push(totalPages);
+                    if (currentPage <= 4) {
+                        pages = [1, 2, 3, 4, 5, '...', totalPages];
+                    } else if (currentPage >= totalPages - 3) {
+                        pages = [1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+                    } else {
+                        pages = [1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages];
                     }
                 }
-
-                return range;
+                
+                return pages;
             },
-
-            // Utility methods kept for compatibility
-            showLoading: function () {
-                // document.getElementById('loading').style.display = 'block';
-                console.log('Loading...');
-            },
-            hideLoading: function () {
-                // document.getElementById('loading').style.display = 'none';
-                console.log('Loading complete');
+            
+            // Keyboard shortcuts
+            handleKeydown: function(event) {
+                // Ctrl/Cmd + F: Focus sidebar search
+                if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+                    event.preventDefault();
+                    var searchInput = document.querySelector('.sidebar-search-input');
+                    if (searchInput) {
+                        searchInput.focus();
+                    }
+                }
+                
+                // Escape: Clear sidebar search
+                if (event.key === 'Escape') {
+                    if (this.sidebarSearchQuery) {
+                        this.sidebarSearchQuery = '';
+                    }
+                }
+                
+                // Ctrl/Cmd + T: New custom SQL tab
+                if ((event.ctrlKey || event.metaKey) && event.key === 't') {
+                    event.preventDefault();
+                    this.openCustomSqlTab();
+                }
+                
+                // Ctrl/Cmd + W: Close current tab
+                if ((event.ctrlKey || event.metaKey) && event.key === 'w') {
+                    event.preventDefault();
+                    if (this.currentTabId) {
+                        this.closeTab(this.currentTabId);
+                    }
+                }
+                
+                // Ctrl/Cmd + [1-9]: Switch to tab by number
+                if ((event.ctrlKey || event.metaKey) && /^[1-9]$/.test(event.key)) {
+                    event.preventDefault();
+                    var tabIndex = parseInt(event.key) - 1;
+                    if (tabIndex < this.activeTabs.length) {
+                        this.switchTab(this.activeTabs[tabIndex].id);
+                    }
+                }
             }
-        },
+        }
     });
-}
-catch (error) {
-    alert('加载表列表失败: ' + error.message + '\n\n堆栈信息:\n' + error.stack);
+} catch (error) {
+    console.error('Vue 应用初始化失败:', error);
+    document.body.innerHTML = '<div style="padding: 20px; color: red; font-family: Arial, sans-serif;"><h2>应用加载失败</h2><p>错误信息: ' + error.message + '</p><p>请刷新页面重试。</p></div>';
 }
