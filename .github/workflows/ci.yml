@@ -1,0 +1,58 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  SOLUTION_FILE_PATH: QuickLook.Plugin.SqliteViewer.sln
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    
+    strategy:
+      matrix:
+        configuration: [Debug, Release]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: true
+
+    - name: Setup .NET Framework
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v2
+
+    - name: Restore NuGet packages
+      run: nuget restore ${{ env.SOLUTION_FILE_PATH }}
+
+    - name: Update version
+      shell: powershell
+      run: |
+        Set-Location Scripts
+        .\update-version.ps1
+
+    - name: Build solution
+      run: msbuild /m /p:Configuration=${{ matrix.configuration }} /p:Platform="Any CPU" ${{ env.SOLUTION_FILE_PATH }}
+      
+    - name: Create plugin package (Release only)
+      if: matrix.configuration == 'Release'
+      shell: powershell
+      run: |
+        Set-Location Scripts
+        .\pack-zip.ps1
+
+    - name: Upload artifacts (Release only)
+      if: matrix.configuration == 'Release'
+      uses: actions/upload-artifact@v4
+      with:
+        name: CI-Build-${{ github.run_number }}
+        path: QuickLook.Plugin.SqliteViewer.qlplugin
+        retention-days: 14

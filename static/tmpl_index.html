@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,73 +10,267 @@
 
 <body>
     <div id="app">
-        <div v-for="(node, index) in treeNodes" :key="index" class="tree-node">
-            <!-- 树节点 -->
-            <div class="tree-node-title" :class="{
-                    'tree-node-expanded': node.expanded,
-                    'tree-node-collapsed': !node.expanded,
-                    'tree-node-active': currentNodeName === node.name
-                }" @click="toggleNode(node, index)">
-                {{ index }} {{ node.label }}
+        <!-- Global Loading Overlay -->
+        <div v-show="isLoading" class="loading-overlay">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">{{ loadingMessage }}</div>
+        </div>
+
+        <!-- Header Section -->
+        <div class="header">
+            <h1 class="app-title">📊 SQLite Database Viewer</h1>
+            <div class="header-stats">
+                <span class="stat-item">{{ tableNames.length }} 表</span>
+                <span class="stat-item">{{ activeTabs.length }} 打开的标签</span>
+            </div>
+        </div>
+
+        <!-- Main Layout: Sidebar + Tabs -->
+        <div class="main-layout">
+            <!-- Sidebar: Table List -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h3>📋 数据表</h3>
+                    <div class="sidebar-search">
+                        <input 
+                            type="text" 
+                            v-model="sidebarSearchQuery" 
+                            placeholder="🔍 搜索表..."
+                            class="sidebar-search-input"
+                        />
+                    </div>
+                </div>
+                
+                <div class="sidebar-content">
+                    <!-- Table List -->
+                    <div class="table-list">
+                        <div v-for="tableName in filteredTableNames" :key="tableName" 
+                             class="table-item" :class="{ 'active': hasActiveTab(tableName) }"
+                             @click="openTableTab(tableName)"
+                             @dblclick="openTableTab(tableName, true)">
+                            <div class="table-item-icon">📋</div>
+                            <div class="table-item-content">
+                                <div class="table-name">{{ tableName }}</div>
+                                <div class="table-info" v-if="getTableInfo(tableName)">
+                                    {{ formatRowCount(getTableInfo(tableName).estimatedRowCount) }} 行
+                                </div>
+                            </div>
+                            <div class="table-item-actions">
+                                <button @click.stop="openTableTab(tableName)" class="quick-open-btn" title="打开表">👁</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Custom SQL Option -->
+                    <div class="custom-sql-item" @click="openCustomSqlTab()">
+                        <div class="table-item-icon">⚡</div>
+                        <div class="table-item-content">
+                            <div class="table-name">自定义 SQL 查询</div>
+                            <div class="table-info">执行自定义 SQL 语句</div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <!-- 内容容器 -->
-            <div v-show="node.expanded" class="view-div">
-                <div v-if="node.isCustom">
-                    <div class="sql-query">
-                        <input type="text" placeholder="请输入 SQL 查询语句..." v-model="sqlInput" />
-                        <button @click="renderTableData(sqlInput, index)">执行查询</button>
+            <!-- Tab Container -->
+            <div class="tab-container">
+                <!-- Tab Headers -->
+                <div class="tab-headers" v-if="activeTabs.length > 0">
+                    <div v-for="(tab, index) in activeTabs" :key="tab.id" 
+                         class="tab-header" :class="{ 'active': currentTabId === tab.id }"
+                         @click="switchTab(tab.id)">
+                        <span class="tab-icon">{{ tab.type === 'custom' ? '⚡' : '📋' }}</span>
+                        <span class="tab-title">{{ tab.title }}</span>
+                        <button @click.stop="closeTab(tab.id)" class="tab-close-btn">✕</button>
                     </div>
                 </div>
-                <div v-else class="pagination">
-                    <div v-if="node.data && node.total > 0" class="table-container">
-                        <!-- v-if="node.total >= node.pageSize" -->
-                        <button :disabled="node.currentPage === 1" @click="renderPage(node, index, node.currentPage - 1)">上一页</button>
-                        <!-- 中间页码按钮 -->
-                        <template v-for="page in visiblePages(node)" :key="page">
-                            <button :class="{ 'active': page === node.currentPage }" :disabled="page === '...'"
-                                @click="renderPage(node, index, page)">
-                                {{ page }}
+
+                <!-- Tab Content -->
+                <div class="tab-content-area" v-if="currentTab">
+                    <!-- Custom SQL Tab -->
+                    <div v-if="currentTab.type === 'custom'" class="custom-sql-tab">
+                        <div class="sql-editor-section">
+                            <div class="sql-editor-header">
+                                <h4>SQL 查询编辑器</h4>
+                                <div class="sql-actions">
+                                    <button @click="executeCustomQuery(currentTab.id)" class="execute-btn" :disabled="isLoading">
+                                        ▶️ 执行查询
+                                    </button>
+                                    <button @click="clearCustomQuery(currentTab.id)" class="clear-btn">
+                                        🗑️ 清空
+                                    </button>
+                                </div>
+                            </div>
+                            <textarea 
+                                v-model="currentTab.sqlQuery" 
+                                placeholder="请输入 SQL 查询语句..."
+                                class="sql-textarea"
+                                rows="6"
+                            ></textarea>
+                        </div>
+                        
+                        <!-- Results Section -->
+                        <div v-if="currentTab.data" class="results-section">
+                            <div class="results-header">
+                                <h4>查询结果</h4>
+                                <div class="results-info">
+                                    {{ currentTab.data.length }} 条记录
+                                </div>
+                            </div>
+                            
+                            <!-- Data Table -->
+                            <div class="table-container">
+                                <div class="table-wrapper">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th class="row-number-header">#</th>
+                                                <th v-for="(column, columnIndex) in currentTab.columns" :key="columnIndex" class="column-header">
+                                                    {{ column }}
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="(row, rowIndex) in currentTab.data" :key="rowIndex" class="data-row">
+                                                <td class="row-number">{{ rowIndex + 1 }}</td>
+                                                <td v-for="(column, columnIndex) in currentTab.columns" :key="columnIndex" class="data-cell">
+                                                    <span :title="row[column]" class="cell-content">
+                                                        {{ row[column] === null ? '(NULL)' : row[column] }}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Table Data Tab -->
+                    <div v-else-if="currentTab.type === 'table'" class="table-tab">
+                        <!-- Table Controls -->
+                        <div class="table-controls">
+                            <div class="table-tab-header">
+                                <h4>{{ currentTab.tableName }}</h4>
+                                <div class="table-actions">
+                                    <button @click="refreshTable(currentTab.id)" class="refresh-btn" :disabled="currentTab.isLoading">
+                                        🔄 刷新
+                                    </button>
+                                    <button @click="exportTable(currentTab.id)" class="export-btn">
+                                        📥 导出
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Pagination Controls -->
+                            <div v-if="currentTab.total > 0" class="pagination-container">
+                                <div class="pagination-info">
+                                    第 {{ currentTab.currentPage }} 页 / 共 {{ Math.ceil(currentTab.total / currentTab.pageSize) }} 页 
+                                    / 总计 {{ currentTab.total.toLocaleString() }} 条记录
+                                </div>
+                                
+                                <div class="pagination-controls">
+                                    <button 
+                                        :disabled="currentTab.currentPage === 1" 
+                                        @click="navigateToPage(currentTab.id, currentTab.currentPage - 1)"
+                                        class="pagination-btn"
+                                    >
+                                        ⏮️ 上一页
+                                    </button>
+                                    
+                                    <!-- 页码按钮 -->
+                                    <template v-for="page in visiblePages(currentTab)" :key="page">
+                                        <button 
+                                            :class="{ 
+                                                'pagination-btn': true,
+                                                'pagination-btn-active': page === currentTab.currentPage,
+                                                'pagination-btn-ellipsis': page === '...'
+                                            }" 
+                                            :disabled="page === '...'"
+                                            @click="navigateToPage(currentTab.id, page)"
+                                        >
+                                            {{ page }}
+                                        </button>
+                                    </template>
+                                    
+                                    <button 
+                                        :disabled="currentTab.currentPage * currentTab.pageSize >= currentTab.total"
+                                        @click="navigateToPage(currentTab.id, currentTab.currentPage + 1)"
+                                        class="pagination-btn"
+                                    >
+                                        下一页 ⏭️
+                                    </button>
+                                </div>
+                                
+                                <div class="page-size-control">
+                                    <label for="page-size">每页显示:</label>
+                                    <select 
+                                        v-model="currentTab.pageSize" 
+                                        @change="changeTabPageSize(currentTab.id, currentTab.pageSize)"
+                                        class="page-size-select"
+                                    >
+                                        <option v-for="size in [10, 20, 50, 100, 200]" :key="size" :value="size">
+                                            {{ size }}
+                                        </option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Data Table -->
+                        <div v-if="currentTab.data && currentTab.data.length > 0" class="table-container">
+                            <div class="table-wrapper">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="row-number-header">#</th>
+                                            <th v-for="(column, columnIndex) in currentTab.columns" :key="columnIndex" class="column-header">
+                                                {{ column }}
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="(row, rowIndex) in currentTab.data" :key="rowIndex" class="data-row">
+                                            <td class="row-number">{{ currentTab.pageSize * (currentTab.currentPage - 1) + rowIndex + 1}}</td>
+                                            <td v-for="(column, columnIndex) in currentTab.columns" :key="columnIndex" class="data-cell">
+                                                <span :title="row[column]" class="cell-content">
+                                                    {{ row[column] === null ? '(NULL)' : row[column] }}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div v-else-if="!currentTab.isLoading" class="no-data-message">
+                            📭 暂无数据
+                        </div>
+                        
+                        <!-- Loading indicator for tab -->
+                        <div v-if="currentTab.isLoading" class="tab-loading">
+                            <div class="loading-spinner"></div>
+                            <div>正在加载数据...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Welcome Screen -->
+                <div v-else class="welcome-screen">
+                    <div class="welcome-content">
+                        <h2>👋 欢迎使用 SQLite 数据库查看器</h2>
+                        <p>从左侧边栏选择一个表开始浏览数据，或创建自定义 SQL 查询。</p>
+                        <div class="welcome-actions">
+                            <button @click="openCustomSqlTab()" class="welcome-btn">
+                                ⚡ 创建 SQL 查询
                             </button>
-                        </template>
-                        <button :disabled="node.currentPage * node.pageSize > node.total"
-                            @click="renderPage(node, index, node.currentPage + 1)">下一页</button>
-                        第 {{ node.currentPage }} 页 / 共 {{ Math.ceil(node.total / node.pageSize) }} 页 / 共 {{ node.total }} 条记录
-                        <select name="page-size" id="page-size" v-model="node.pageSize">
-                            <option v-for="pageSize in [10, 20, 50, 100]" :key="pageSize" :value="pageSize"
-                                @click="changePageSize(node, index, pageSize)">
-                                {{ pageSize }}
-                            </option>
-
-                        </select>
+                        </div>
                     </div>
                 </div>
-
-                <div v-if="node.data && node.data.length > 0" class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>row</th>
-                                <th v-for="(column, columnIndex) in node.columns" :key="columnIndex">{{ column }}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="(row, rowIndex) in node.data" :key="rowIndex">
-                                <td>{{ node.pageSize * (node.currentPage - 1) + rowIndex + 1}}</td>
-                                <td v-for="(column, columnIndex) in node.columns" :key="columnIndex">
-                                    <span :title="row[column]">{{ row[column] }}</span>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <p v-else>暂无数据</p>
             </div>
         </div>
     </div>
 
-    <script
-        src="[[PLUGIN_STATIC_DIR]]/scripts.js"></script>
+    <script src="[[PLUGIN_STATIC_DIR]]/scripts.js"></script>
 </body>
 
 </html>
