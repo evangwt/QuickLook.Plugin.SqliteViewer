@@ -24,9 +24,9 @@ using System.Reflection;
 [assembly: AssemblyInformationalVersion("$revision")]
 "@
 
-$text | Out-File $PSScriptRoot\..\GitVersion.cs -Encoding utf8
+$text | Out-File (Join-Path (Split-Path $PSScriptRoot -Parent) "GitVersion.cs") -Encoding utf8
 
 
-$xml = [xml](Get-Content $PSScriptRoot\..\QuickLook.Plugin.Metadata.Base.config)
+$xml = [xml](Get-Content (Join-Path (Split-Path $PSScriptRoot -Parent) "QuickLook.Plugin.Metadata.Base.config"))
 $xml.Metadata.Version="$revision"
-$xml.Save("$PSScriptRoot\..\QuickLook.Plugin.Metadata.config")
+$xml.Save((Join-Path (Split-Path $PSScriptRoot -Parent) "QuickLook.Plugin.Metadata.config"))
