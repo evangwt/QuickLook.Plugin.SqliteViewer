@@ -79,6 +79,18 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: QuickLook.Plugin.SqliteViewer-${{ github.sha }}
+    
+    - name: Verify plugin file exists
+      shell: bash
+      run: |
+        if [ ! -f "QuickLook.Plugin.SqliteViewer.qlplugin" ]; then
+          echo "❌ Error: QuickLook.Plugin.SqliteViewer.qlplugin not found!"
+          echo "Available files:"
+          ls -la
+          exit 1
+        fi
+        echo "✅ Plugin file found: QuickLook.Plugin.SqliteViewer.qlplugin"
+        echo "File size: $(ls -lh QuickLook.Plugin.SqliteViewer.qlplugin | awk '{print $5}')"
 
     - name: Get version info
       id: version_info
