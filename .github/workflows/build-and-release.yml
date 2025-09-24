@@ -43,6 +43,8 @@ jobs:
 
     - name: Build solution
       run: msbuild /m /p:Configuration=${{ env.BUILD_CONFIGURATION }} /p:Platform="Any CPU" ${{ env.SOLUTION_FILE_PATH }}
+      env:
+        BUILD_CONFIGURATION: Release
 
     - name: Create plugin package
       shell: powershell
@@ -67,7 +69,7 @@ jobs:
   release:
     needs: build
     runs-on: windows-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
     
     steps:
     - name: Checkout code
@@ -79,28 +81,63 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: QuickLook.Plugin.SqliteViewer-${{ github.sha }}
-
-    - name: Get tag name
-      id: tag_name
+    
+    - name: Verify plugin file exists
       shell: bash
-      run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      run: |
+        if [ ! -f "QuickLook.Plugin.SqliteViewer.qlplugin" ]; then
+          echo "❌ Error: QuickLook.Plugin.SqliteViewer.qlplugin not found!"
+          echo "Available files:"
+          ls -la
+          exit 1
+        fi
+        echo "✅ Plugin file found: QuickLook.Plugin.SqliteViewer.qlplugin"
+        echo "File size: $(ls -lh QuickLook.Plugin.SqliteViewer.qlplugin | awk '{print $5}')"
+
+    - name: Get version info
+      id: version_info
+      shell: bash
+      run: |
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          # For tagged releases
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          RELEASE_NAME="QuickLook SQLite Viewer $TAG_NAME"
+          IS_PRERELEASE=false
+          if [[ "$TAG_NAME" == *"-"* ]]; then
+            IS_PRERELEASE=true
+          fi
+        else
+          # For main branch builds - create pre-release
+          COMMIT_SHORT=$(echo $GITHUB_SHA | cut -c1-7)
+          BUILD_NUMBER=$(date +%Y%m%d%H%M)
+          TAG_NAME="v0.3.0-dev.$BUILD_NUMBER"
+          RELEASE_NAME="QuickLook SQLite Viewer Development Build (${COMMIT_SHORT})"
+          IS_PRERELEASE=true
+        fi
+        
+        echo "TAG_NAME=$TAG_NAME" >> $GITHUB_OUTPUT
+        echo "RELEASE_NAME=$RELEASE_NAME" >> $GITHUB_OUTPUT
+        echo "IS_PRERELEASE=$IS_PRERELEASE" >> $GITHUB_OUTPUT
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ steps.tag_name.outputs.TAG_NAME }}
-        name: QuickLook SQLite Viewer ${{ steps.tag_name.outputs.TAG_NAME }}
+        tag_name: ${{ steps.version_info.outputs.TAG_NAME }}
+        name: ${{ steps.version_info.outputs.RELEASE_NAME }}
         draft: false
-        prerelease: ${{ contains(steps.tag_name.outputs.TAG_NAME, '-') }}
+        prerelease: ${{ steps.version_info.outputs.IS_PRERELEASE }}
         files: QuickLook.Plugin.SqliteViewer.qlplugin
+        generate_release_notes: true
         body: |
-          ## Changes in this Release
+          ## ${{ steps.version_info.outputs.RELEASE_NAME }}
           
           ### Features
           - Enhanced SQLite database viewing with tabbed interface
           - Sidebar navigation for quick table access
           - Performance optimizations for large databases
           - Modern UI with dark theme support
+          - Custom SQL query execution
+          - Configurable logging and window sizing
           
           ### Installation
           1. Download the `QuickLook.Plugin.SqliteViewer.qlplugin` file below
@@ -111,3 +148,7 @@ jobs:
           - Windows 10/11
           - .NET Framework 4.6.2 or higher
           - QuickLook 3.7 or higher
+          
+          ### Build Information
+          - Commit: ${{ github.sha }}
+          - Build Date: ${{ github.run_started_at }}
