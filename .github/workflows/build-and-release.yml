@@ -43,6 +43,8 @@ jobs:
 
     - name: Build solution
       run: msbuild /m /p:Configuration=${{ env.BUILD_CONFIGURATION }} /p:Platform="Any CPU" ${{ env.SOLUTION_FILE_PATH }}
+      env:
+        BUILD_CONFIGURATION: Release
 
     - name: Create plugin package
       shell: powershell

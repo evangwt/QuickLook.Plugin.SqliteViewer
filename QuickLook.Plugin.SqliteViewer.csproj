@@ -82,7 +82,5 @@
       </None>
     </ItemGroup>
 
-    <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-      <Exec Command="cd $(ProjectDir)\scripts &amp; powershell.exe -ExecutionPolicy Bypass -File &quot;$(ProjectDir)\scripts\pack-zip.ps1&quot;" />
-    </Target>
+
 </Project>
