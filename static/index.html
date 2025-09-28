@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQLite Viewer</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script src="./vue2.js"></script>
+</head>
+
+<body>
+    <div id="app">
+        <!-- Global Loading Overlay -->
+        <div v-show="isLoading" class="loading-overlay">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">{{ loadingMessage }}</div>
+        </div>
+
+        <!-- Header Section -->
+        <div class="header">
+            <h1 class="app-title">📊 SQLite Database Viewer</h1>
+            <div class="header-stats">
+                <span class="stat-item">{{ tableNames.length }} 表</span>
+                <span class="stat-item">{{ activeTabs.length }} 打开的标签</span>
+            </div>
+        </div>
+
+        <!-- Main Layout: Sidebar + Tabs -->
+        <div class="main-layout">
+            <!-- Sidebar: Table List -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h3>📋 数据表</h3>
+                    <div class="sidebar-search">
+                        <input 
+                            type="text" 
+                            v-model="sidebarSearchQuery" 
+                            placeholder="🔍 搜索表..."
+                            class="sidebar-search-input"
+                        />
+                    </div>
+                </div>
+                
+                <div class="sidebar-content">
+                    <!-- Table List -->
+                    <div class="table-list">
+                        <div v-for="tableName in filteredTableNames" :key="tableName" 
+                             class="table-item" :class="{ 'active': hasActiveTab(tableName) }"
+                             @click="openTableTab(tableName)"
+                             @dblclick="openTableTab(tableName, true)">
+                            <div class="table-item-content">
+                                <div class="table-name">{{ tableName }}</div>
+                                <div class="table-info" v-if="tableInfoCache[tableName]">
+                                    <span class="table-row-count">{{ tableInfoCache[tableName].estimatedRowCount }} 行</span>
+                                    <span class="table-col-count">{{ tableInfoCache[tableName].columns.length }} 列</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Custom SQL Button -->
+                    <div class="sidebar-actions">
+                        <button @click="openCustomSqlTab()" class="custom-sql-btn">
+                            ⚡ 自定义 SQL 查询
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Content Area -->
+            <div class="main-content">
+                <!-- Tab Bar -->
+                <div class="tab-bar" v-if="activeTabs.length > 0">
+                    <div v-for="tab in activeTabs" :key="tab.id" 
+                         class="tab" 
+                         :class="{ 'active': tab.id === currentTabId }"
+                         @click="switchTab(tab.id)">
+                        <span class="tab-title">{{ tab.title }}</span>
+                        <button @click.stop="closeTab(tab.id)" class="tab-close">×</button>
+                    </div>
+                    <div class="tab-actions">
+                        <button @click="openCustomSqlTab()" class="new-tab-btn" title="新建 SQL 查询 (Ctrl+T)">+</button>
+                    </div>
+                </div>
+                
+                <!-- Tab Content -->
+                <div class="tab-content" v-if="currentTab">
+                    <!-- Table Data View -->
+                    <div v-if="currentTab.type === 'table'" class="table-view">
+                        <div v-if="currentTab.loading" class="tab-loading">
+                            <div class="loading-spinner"></div>
+                            <div>正在加载数据...</div>
+                        </div>
+                        
+                        <div v-else-if="currentTab.data" class="results-section">
+                            <div class="results-header">
+                                <h4>表: {{ currentTab.tableName }}</h4>
+                                <div class="results-info">
+                                    {{ currentTab.data.length }} 条记录 (限制显示前 100 条)
+                                </div>
+                            </div>
+                            
+                            <!-- Data Table -->
+                            <div class="table-container">
+                                <div class="table-wrapper">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th class="row-number-header">#</th>
+                                                <th v-for="(column, columnIndex) in currentTab.columns" :key="columnIndex" class="column-header">
+                                                    {{ column }}
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="(row, rowIndex) in currentTab.data" :key="rowIndex" class="data-row">
+                                                <td class="row-number">{{ rowIndex + 1 }}</td>
+                                                <td v-for="(column, columnIndex) in currentTab.columns" :key="columnIndex" class="data-cell">
+                                                    <span class="cell-content" :title="row[column]">{{ formatCellValue(row[column]) }}</span>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div v-else class="no-data">
+                            <p>没有数据可显示</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Custom SQL View -->
+                    <div v-else-if="currentTab.type === 'custom'" class="custom-sql-view">
+                        <!-- SQL Editor -->
+                        <div class="sql-editor-section">
+                            <div class="sql-editor-header">
+                                <h4>SQL 查询编辑器</h4>
+                                <div class="sql-actions">
+                                    <button @click="executeCustomSql()" 
+                                            class="execute-btn" 
+                                            :disabled="currentTab.loading">
+                                        {{ currentTab.loading ? '执行中...' : '▶ 执行查询' }}
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <textarea 
+                                v-model="currentTab.sql"
+                                placeholder="请输入 SQL 查询语句..."
+                                class="sql-textarea"
+                                rows="6"
+                            ></textarea>
+                        </div>
+                        
+                        <!-- Results Section -->
+                        <div v-if="currentTab.data" class="results-section">
+                            <div class="results-header">
+                                <h4>查询结果</h4>
+                                <div class="results-info">
+                                    {{ currentTab.data.length }} 条记录
+                                </div>
+                            </div>
+                            
+                            <!-- Data Table -->
+                            <div class="table-container">
+                                <div class="table-wrapper">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th class="row-number-header">#</th>
+                                                <th v-for="(column, columnIndex) in currentTab.columns" :key="columnIndex" class="column-header">
+                                                    {{ column }}
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="(row, rowIndex) in currentTab.data" :key="rowIndex" class="data-row">
+                                                <td class="row-number">{{ rowIndex + 1 }}</td>
+                                                <td v-for="(column, columnIndex) in currentTab.columns" :key="columnIndex" class="data-cell">
+                                                    <span class="cell-content" :title="row[column]">{{ formatCellValue(row[column]) }}</span>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Loading State for Custom SQL -->
+                        <div v-else-if="currentTab.loading" class="tab-loading">
+                            <div class="loading-spinner"></div>
+                            <div>正在执行查询...</div>
+                        </div>
+                        
+                        <!-- Error State -->
+                        <div v-else-if="currentTab.error" class="error-state">
+                            <h4>查询出错</h4>
+                            <p>{{ currentTab.error }}</p>
+                        </div>
+                        
+                        <!-- Initial State -->
+                        <div v-else class="sql-placeholder">
+                            <div class="placeholder-content">
+                                <h3>💡 开始编写 SQL 查询</h3>
+                                <p>在上方编辑器中输入 SQL 查询语句，然后点击"执行查询"按钮。</p>
+                                <p>示例：<code>SELECT * FROM {{ tableNames[0] || 'table_name' }} LIMIT 10</code></p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Loading State -->
+                    <div v-if="currentTab.loading" class="tab-loading">
+                        <div class="loading-spinner"></div>
+                        <div>正在加载数据...</div>
+                    </div>
+                </div>
+
+                <!-- Welcome Screen -->
+                <div v-else class="welcome-screen">
+                    <div class="welcome-content">
+                        <h2>👋 欢迎使用 SQLite 数据库查看器</h2>
+                        <p>从左侧边栏选择一个表开始浏览数据，或创建自定义 SQL 查询。</p>
+                        <div class="welcome-actions">
+                            <button @click="openCustomSqlTab()" class="welcome-btn">
+                                ⚡ 创建 SQL 查询
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="./scripts.js"></script>
+</body>
+
+</html>
