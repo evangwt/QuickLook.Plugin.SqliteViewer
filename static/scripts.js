@@ -358,6 +358,25 @@ try {
             
             // Keyboard shortcuts
             handleKeydown: function(event) {
+                // Prevent spacebar from triggering QuickLook exit
+                // This is crucial to prevent the plugin from being closed when user presses space
+                if (event.key === ' ' || event.code === 'Space') {
+                    // Check if we're not in a text input/textarea where space should work normally
+                    var activeElement = document.activeElement;
+                    var isInTextInput = activeElement && (
+                        activeElement.tagName.toLowerCase() === 'input' || 
+                        activeElement.tagName.toLowerCase() === 'textarea' ||
+                        activeElement.isContentEditable
+                    );
+                    
+                    if (!isInTextInput) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        event.stopImmediatePropagation();
+                        return false;
+                    }
+                }
+                
                 // Ctrl/Cmd + F: Focus sidebar search
                 if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
                     event.preventDefault();

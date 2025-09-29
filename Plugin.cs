@@ -110,24 +110,29 @@ namespace QuickLook.Plugin.SqliteViewer
                 File.WriteAllText(settingPath, JsonConvert.SerializeObject(settingMap, Formatting.Indented));
             }
 
+            // 确保 index.html 文件存在，如果不存在则从模板创建
             if (!File.Exists(htmlFilePath))
             {
                 // 检查模板文件是否存在
-                if (!File.Exists(tmplHtmlFilePath))
+                if (File.Exists(tmplHtmlFilePath))
                 {
-                    throw new FileNotFoundException($"模板文件未找到: {tmplHtmlFilePath}");
+                    // 读取模板文件内容
+                    string templateContent = File.ReadAllText(tmplHtmlFilePath);
+
+                    // 替换占位符 - 需要将路径转换为适合HTML中使用的文件URL格式
+                    string staticDirUrl = "file:///" + pluginStaticDir.Replace("\\", "/");
+                    templateContent = templateContent.Replace("[[PLUGIN_STATIC_DIR]]", staticDirUrl);
+
+                    // 将内容写入 index.html
+                    File.WriteAllText(htmlFilePath, templateContent);
+                    Logger.Instance.Info($"已根据模板文件生成新的 HTML 文件: {htmlFilePath}");
                 }
-
-                // 读取模板文件内容
-                string templateContent = File.ReadAllText(tmplHtmlFilePath);
-
-                // 替换占位符
-                templateContent = templateContent.Replace("[[PLUGIN_STATIC_DIR]]", pluginStaticDir).Replace("\\", "/");
-
-                // 将内容写入 index.html
-                File.WriteAllText(htmlFilePath, templateContent);
-                Logger.Instance.Info($"已根据模板文件生成新的 HTML 文件: {htmlFilePath}");
+                else
+                {
+                    Logger.Instance.Warning($"模板文件未找到: {tmplHtmlFilePath}，使用默认的 index.html 文件");
+                }
             }
+            
             setting = new Setting(settingPath);
             var logger = Logger.Instance;
             logger.Level = (Logger.LogLevel)setting.logLevel;
