@@ -13,7 +13,10 @@
 	    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
 	    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
 	    <DebugType>full</DebugType>
-	    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+	    <CodeAnalysisRuleSet Condition="Exists('MinimumRecommendedRules.ruleset')">MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+        <!-- 手动维护的插件版本号，用于打包文件名 -->
+        <PluginVersion>0.2.0</PluginVersion>
+        <UseGitTagVersion>true</UseGitTagVersion>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
@@ -28,20 +31,38 @@
         <DefineConstants>TRACE</DefineConstants>
     </PropertyGroup>
 
+    <Target Name="CalcPluginVersion" BeforeTargets="PrepareForBuild" Condition="'$(UseGitTagVersion)' == 'true'">
+        <Exec Command="git describe --tags --always" IgnoreExitCode="true" StandardOutputImportance="Low">
+            <Output TaskParameter="ConsoleOutput" PropertyName="GitTagRaw" />
+        </Exec>
+        <PropertyGroup>
+            <GitTag>$(GitTagRaw.Replace('\n','').Replace('\r',''))</GitTag>
+            <PluginVersion Condition="'$(GitTag)' != '' and '$(PluginVersion)' == '0.2.0'">$(GitTag)</PluginVersion>
+        </PropertyGroup>
+    </Target>
+
+    <!-- 排除 QuickLook.Common 子目录中的源文件，避免与项目引用产生重复编译 -->
     <ItemGroup>
-      <Content Include="static\index.html">
+        <Compile Remove="QuickLook.Common\**" />
+        <EmbeddedResource Remove="QuickLook.Common\**" />
+        <None Remove="QuickLook.Common\**" />
+        <Page Remove="QuickLook.Common\**" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Content Include="static\\index.html">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <Content Include="static\tmpl_index.html">
+      <Content Include="static\\tmpl_index.html">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <Content Include="static\styles.css">
+      <Content Include="static\\styles.css">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <Content Include="static\scripts.js">
+      <Content Include="static\\scripts.js">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <Content Include="static\vue2.js">
+      <Content Include="static\\vue2.js">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
     </ItemGroup>
@@ -54,7 +75,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="9.0.4" />
       <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
       <PackageReference Include="System.Data.SQLite" Version="1.0.119" />
       <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3240.44">
@@ -63,19 +83,58 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="QuickLook.Common\QuickLook.Common.csproj" />
+        <ProjectReference Include="QuickLook.Common\\QuickLook.Common.csproj" />
     </ItemGroup>
 
     <ItemGroup>
       <None Update="script.js">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>
-      <None Update="static\scripts.js">
+      <None Update="static\\scripts.js">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>
-      <None Update="static\vue2.js">
+      <None Update="static\\vue2.js">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>
     </ItemGroup>
 
+    <!-- Release 构建后自动打包为 .qlplugin -->
+    <Target Name="CreateQlPlugin" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+        <PropertyGroup>
+            <PackageRoot>$(OutputPath)PackageRoot</PackageRoot>
+            <PluginFolder>$(PackageRoot)\\$(AssemblyName)</PluginFolder>
+            <DistDir>$(MSBuildProjectDirectory)\\dist</DistDir>
+            <PackageFile>$(DistDir)\\$(AssemblyName)-$(PluginVersion).qlplugin</PackageFile>
+        </PropertyGroup>
+
+        <!-- 清理并创建目录 -->
+        <RemoveDir Directories="$(PluginFolder)" />
+        <MakeDir Directories="$(PluginFolder)" />
+
+        <!-- 收集 static 资源 -->
+        <ItemGroup>
+            <PluginStatic Include="$(MSBuildProjectDirectory)\\static\\**\\*.*" />
+        </ItemGroup>
+        <Copy SourceFiles="@(PluginStatic)" DestinationFolder="$(PluginFolder)\\static\\%(RecursiveDir)" SkipUnchangedFiles="true" />
+
+        <!-- 复制主 DLL 和配置 -->
+        <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(PluginFolder)" />
+        <Copy SourceFiles="$(MSBuildProjectDirectory)\\QuickLook.Plugin.Metadata.config" DestinationFolder="$(PluginFolder)" />
+        <Copy SourceFiles="$(MSBuildProjectDirectory)\\QuickLook.Plugin.Metadata.Base.config" DestinationFolder="$(PluginFolder)" Condition="Exists('$(MSBuildProjectDirectory)\\QuickLook.Plugin.Metadata.Base.config')" />
+        <Copy SourceFiles="$(OutputPath)$(AssemblyName).pdb" DestinationFolder="$(PluginFolder)" Condition="Exists('$(OutputPath)$(AssemblyName).pdb')" />
+
+        <!-- 复制依赖 dll (排除宿主提供的 QuickLook.Common.dll) -->
+        <ItemGroup>
+            <DependencyDlls Include="$(OutputPath)*.dll" Exclude="$(OutputPath)$(AssemblyName).dll;$(OutputPath)QuickLook.Common.dll" />
+        </ItemGroup>
+        <Copy SourceFiles="@(DependencyDlls)" DestinationFolder="$(PluginFolder)" />
+
+        <!-- 输出目录 -->
+        <MakeDir Directories="$(DistDir)" />
+
+        <!-- 仅压缩插件主目录（而非整个 PackageRoot） -->
+        <Exec Command="powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command &quot;Add-Type -AssemblyName System.IO.Compression.FileSystem; if (Test-Path '$(PackageFile)') { Remove-Item '$(PackageFile)' -Force }; $zip = Join-Path '$(PackageRoot)' 'archive.zip'; if (Test-Path $zip) { Remove-Item $zip -Force }; [IO.Compression.ZipFile]::CreateFromDirectory('$(PluginFolder)', $zip); Move-Item $zip '$(PackageFile)' -Force;&quot;" />
+
+        <Message Text="Created package: $(PackageFile)" Importance="High" />
+    </Target>
 </Project>
