@@ -29,13 +29,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <Compile Remove="QuickLook.Common\**" />
-      <EmbeddedResource Remove="QuickLook.Common\**" />
-      <None Remove="QuickLook.Common\**" />
-      <Page Remove="QuickLook.Common\**" />
-    </ItemGroup>
-
-    <ItemGroup>
       <Content Include="static\index.html">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
@@ -84,6 +77,5 @@
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>
     </ItemGroup>
-
 
 </Project>
